@@ -1,0 +1,857 @@
+---
+title: "Casino Task Data Analysis"
+date: "11/3/2021"
+output: 
+  html_document:
+    df_print: paged
+    theme: flatly
+    toc: yes
+    toc_depth: 4
+    toc_float: yes
+---
+
+```{=html}
+<style type="text/css">
+h1.title {
+font-size: 38px;
+}
+h1 { /* Header 1 */
+font-size: 28px;
+}
+h2 { /* Header 2 */
+font-size: 22px;
+}
+h3 { /* Header 3 */
+font-size: 18px;
+}
+
+</style>
+```
+
+------------------------------------------------------------------------
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = F, warning = F, message = F, cache = T)
+knitr::opts_chunk$set(fig.path = "figures/")
+knitr::opts_chunk$set(fig.width=7, fig.height = 4.5, dpi = 600)
+```
+
+```{r load libraries and functions}
+# Load needed libraries
+library(tidyverse)
+library(glue)
+library(magrittr)
+library(afex)
+library(knitr)
+library(kableExtra)
+library(broom)
+
+# scale function (z-score)
+scale_this <- function(x){
+  (x - mean(x, na.rm=TRUE)) / sd(x, na.rm=TRUE)
+}
+
+#standard error function
+se <- function(x){
+  sd(x, na.rm = T)/sqrt(length(x))
+}
+```
+
+```{r define plot aesthetics }
+#define colors to use for plots
+color1 = "#FFDD3C"
+color2 = "#378bf1"
+color3 = "grey"
+
+#define plotting theme
+casino.theme <- theme(panel.background = element_rect(fill='transparent'),
+                    axis.line = element_line(color='black'),
+                    panel.grid.minor = element_line(color='transparent'),
+                    axis.title.x = element_text(size=16, vjust=-.25),
+                    axis.title.y = element_text(size=16, vjust=1),
+                    axis.text.x = element_text(size=12, colour="black"),
+                    axis.text.y = element_text(size=12, colour="black"),
+                    legend.text=element_text(size=12),
+                    legend.title = element_text(size = 14),
+                    plot.title = element_text(size=16, face = "bold", hjust = .5), 
+                    strip.text.x = element_text(size=12), 
+                    strip.text.y = element_text(size=12, face="bold"), 
+                    strip.background = element_rect(colour= "black", fill = "transparent"))
+```
+
+```{r read in data}
+#define data directory
+data_dir = "data/task_data/"
+
+#get list of files
+data_files <- list.files(path = data_dir, pattern = "*.csv")
+
+#get list of subject ages
+sub_ages <- read_csv("data/other_data_files/sub_ages.csv")
+
+#initialize data frame
+data <- data.frame()
+
+# Read in data
+for (i in c(1:length(data_files))){
+  sub_data <- read_csv(glue("{data_dir}{data_files[i]}"), show_col_types = F) 
+  
+  #compute the number of browser interactions
+  num_interactions = length(str_split(tail(sub_data,1)$interactions, pattern = "\r\n")[[1]]) - 2
+  sub_data$num_interactions <- num_interactions
+  
+  #compute number of quiz questions answered correctly
+  num_quiz_attempts = nrow(sub_data %>% 
+                             filter(trial_type == "casino-comp_q"))
+  sub_data$quiz_attempts <- num_quiz_attempts
+  
+  #add numeric id to use in matlab later
+  sub_data$matlab_id <- i
+  
+  #combine subject data into larger data frame
+  data <- rbind(data, sub_data)
+}
+
+#add ages to data
+data <- full_join(data, sub_ages, by = c("sub_id"))
+
+#add age groups
+data %<>% mutate(age_group = case_when(age < 13 ~ "Children",
+                                       age > 13 & age < 18 ~ "Adolescents",
+                                       age > 18 ~ "Adults"),
+                          age_group = factor(age_group, levels = c("Children", "Adolescents", "Adults")))
+```
+
+# Data quality
+```{r data quality checks}
+summary_stats <- data %>%
+  group_by(sub_id, floor(age), age_group) %>%
+  summarize(risk_good_first = risk_good_first[1],
+            num_quiz_trials = mean(quiz_attempts, na.rm = T),
+            browser_interactions = mean(num_interactions, na.rm = T)) %>%
+  arrange(`floor(age)`)
+
+kable(summary_stats, 
+      col.names = c("Sub ID", "Age", "Age Group", "Risk Good First?", "Comprehension Questions", "Browser Interactions")) %>% 
+  kable_classic(full_width = F, html_font = "Arial") %>%
+  kable_styling("striped", position = "float_left") %>%
+  scroll_box(width = "600px", height = "400px")
+```
+
+## Browser interactions
+```{r browser interactions plot}
+browser_interactions_plot <- ggplot(summary_stats, aes(x = browser_interactions)) +
+  geom_histogram(fill = color2, color = "black", binwidth = 5) +
+  xlab("Number of Browser Interactions") +
+  ylab("Number of Participants") +
+  geom_vline(xintercept = 20, linetype = 'dashed') +
+  casino.theme
+browser_interactions_plot
+
+#determine who to exclude
+participants_to_exclude <- summary_stats %>%
+  filter(browser_interactions > 20) %>%
+  select(sub_id, age_group) %>%
+  mutate(exclude = 1)
+
+#determine number of subs excluded
+children_excluded = nrow(participants_to_exclude %>% filter(age_group == "Children"))
+adolescents_excluded = nrow(participants_to_exclude %>% filter(age_group == "Adolescents"))
+adults_excluded = nrow(participants_to_exclude %>% filter(age_group == "Adults"))
+
+#combine with data
+filtered_data <- full_join(data, participants_to_exclude, by = c("sub_id", "age_group")) %>%
+  filter(is.na(exclude)) %>%
+  select(-exclude)
+```
+
+We excluded `r children_excluded` children, `r adolescents_excluded` adolescents, and `r adults_excluded` adults who had more than 20 browser interactions during the task.
+
+## Missed responses
+```{r missed responses plot}
+missed_responses <- filtered_data %>%     
+  filter(task_part == "real_trial") %>%
+  group_by(sub_id, age_group) %>%
+  summarize(risk_good_first = risk_good_first[1],
+            num_quiz_trials = mean(quiz_attempts, na.rm = T),
+            choice_0 = sum(choice_position == 0, na.rm = T),
+            choice_1 = sum(choice_position == 1, na.rm = T),
+            choice_2 = sum(choice_position == 2, na.rm = T),
+            choice_3 = sum(choice_position == 3, na.rm = T)) %>%
+  mutate(missed_responses = 200 - choice_0 - choice_1 - choice_2 - choice_3)
+
+missed_resp_plot <- ggplot(missed_responses, aes(x = missed_responses)) +
+  geom_histogram(fill = color2, color = "black", binwidth = 5) +
+  xlab("Missed Responses") +
+  ylab("Number of Participants") +
+  geom_vline(xintercept = 20, linetype = 'dashed') +
+  casino.theme
+missed_resp_plot
+
+#determine who to exclude
+participants_to_exclude <- missed_responses %>%
+  filter(missed_responses > 20) %>%
+  select(sub_id, age_group) %>%
+  mutate(exclude = 1)
+
+#determine number of subs excluded
+children_excluded = nrow(participants_to_exclude %>% filter(age_group == "Children"))
+adolescents_excluded = nrow(participants_to_exclude %>% filter(age_group == "Adolescents"))
+adults_excluded = nrow(participants_to_exclude %>% filter(age_group == "Adults"))
+
+#combine with data
+filtered_data_2 <- full_join(filtered_data, participants_to_exclude, by = c("sub_id", "age_group")) %>%
+  filter(is.na(exclude)) %>%
+  select(-exclude)
+```
+
+We excluded `r children_excluded` children, `r adolescents_excluded` adolescents, and `r adults_excluded` adults who had more than 20 missed responses during the task.
+
+## Key press distribution
+```{r key distribution plot}
+key_dist <- filtered_data_2 %>%     
+  filter(task_part == "real_trial") %>%
+  group_by(sub_id, age_group) %>%
+  summarize(risk_good_first = risk_good_first[1],
+            num_quiz_trials = mean(quiz_attempts, na.rm = T),
+            choice_0 = sum(choice_position == 0, na.rm = T),
+            choice_1 = sum(choice_position == 1, na.rm = T),
+            choice_2 = sum(choice_position == 2, na.rm = T),
+            choice_3 = sum(choice_position == 3, na.rm = T)) %>%
+  mutate(max_key_press = max(choice_0, choice_1, choice_2, choice_3))
+
+max_key_plot <- ggplot(key_dist, aes(x = max_key_press)) +
+  geom_histogram(fill = color2, color = "black", binwidth = 5, boundary = 80) +
+  xlab("Presses of Same Key") +
+  ylab("Number of Participants") +
+  geom_vline(xintercept = 80, linetype = 'dashed') +
+  casino.theme
+max_key_plot
+
+#determine who to exclude
+participants_to_exclude <- key_dist %>%
+  filter(max_key_press > 80) %>%
+  select(sub_id, age_group) %>%
+  mutate(exclude = 1)
+
+#determine number of subs excluded
+children_excluded = nrow(participants_to_exclude %>% filter(age_group == "Children"))
+adolescents_excluded = nrow(participants_to_exclude %>% filter(age_group == "Adolescents"))
+adults_excluded = nrow(participants_to_exclude %>% filter(age_group == "Adults"))
+
+#combine with data
+filtered_data_3 <- full_join(filtered_data_2, participants_to_exclude, by = c("sub_id", "age_group")) %>%
+  filter(is.na(exclude)) %>%
+  select(-exclude)
+```
+
+We excluded `r children_excluded` children, `r adolescents_excluded` adolescents, and `r adults_excluded` adults who selected the same key more than 75 times during the task.
+
+## Fast RTs
+```{r fast RT distribution plot}
+fast_RTs <- filtered_data_3 %>%     
+  filter(task_part == "real_trial") %>%
+  group_by(sub_id, age_group) %>%
+  mutate(rt = as.numeric(rt)) %>%
+  summarize(fast_RTs = sum(rt < 200, na.rm = T)) 
+
+fast_rt_plot <- ggplot(fast_RTs, aes(x = fast_RTs)) +
+  geom_histogram(fill = color2, color = "black", binwidth = 5) +
+  xlab("Number RTs < 200 ms") +
+  ylab("Number of Participants") +
+  geom_vline(xintercept = 40, linetype = 'dashed') +
+  casino.theme
+fast_rt_plot
+
+#determine who to exclude
+participants_to_exclude <- fast_RTs %>%
+  filter(fast_RTs > 40) %>%
+  select(sub_id, age_group) %>%
+  mutate(exclude = 1)
+
+#determine number of subs excluded
+children_excluded = nrow(participants_to_exclude %>% filter(age_group == "Children"))
+adolescents_excluded = nrow(participants_to_exclude %>% filter(age_group == "Adolescents"))
+adults_excluded = nrow(participants_to_exclude %>% filter(age_group == "Adults"))
+
+#combine with data
+filtered_data_4 <- full_join(filtered_data_3, participants_to_exclude, by = c("sub_id", "age_group")) %>%
+  filter(is.na(exclude)) %>%
+  select(-exclude)
+
+#save filtered_data_4 as filtered data
+filtered_data <- filtered_data_4
+```
+
+We excluded `r children_excluded` children, `r adolescents_excluded` adolescents, and `r adults_excluded` adults who made more than 40 responses in \< 200 ms throughout the task.
+
+# Participant information
+
+## Participant age distribution
+```{r plot ages}
+#get the age distribution for included participants
+sub_ages <- filtered_data %>%
+  select(sub_id, age, gender, age_group) %>%
+  unique()
+
+#write csv of included participants
+write_csv(sub_ages, "data/other_data_files/sub_ages_inc.csv")
+
+#determine the numbers of participants in each age group included
+children_included = nrow(sub_ages %>% filter(age_group == "Children"))
+adolescents_included = nrow(sub_ages %>% filter(age_group == "Adolescents"))
+adults_included = nrow(sub_ages %>% filter(age_group == "Adults"))
+
+#histogram of participant ages
+age_hist <- ggplot(sub_ages, aes(x = floor(age), fill = gender)) +
+  geom_histogram(color = "black", binwidth = 1) +
+  scale_fill_manual(values = c(color1, color2), name = "Sex") +
+  xlab("Age (Years)") +
+  ylab("Number of Participants") +
+  scale_y_continuous(breaks=seq(2, 12, by=2)) +
+  casino.theme
+age_hist
+```
+
+## Participant age and gender descriptive statistics
+```{r sub stats tables, fig.align='left'}
+#table of ages and gender
+age_stats <- sub_ages %>%
+  group_by(age_group) %>%
+  summarize(N = n(),
+            mean_age = mean(age),
+            sd_age = sd(age),
+            min_age = min(age),
+            max_age = max(age)) 
+
+gender_stats <- sub_ages %>%
+  group_by(age_group, gender) %>%
+  summarize(N = n())
+
+kable(age_stats, digits = 2, col.names = c("Age Group", "N", "Mean Age", "SD Age", "Min Age", "Max Age"), align = c('l', 'c', 'c', 'c', 'c', 'c')) %>% 
+  kable_classic(full_width = F, html_font = "Arial") %>%
+  kable_styling("striped", position = "float_left")
+
+
+kable(gender_stats, digits = 2, col.names = c("Age Group", "Sex", "N"),
+       align = c('l', 'c', 'c')) %>% 
+  kable_classic(full_width = F, html_font = "Arial") %>%
+  kable_styling("striped", position = "left")
+```
+
+This left a final sample of `r children_included` children, `r adolescents_included` adolescents, and `r adults_included` adults.
+
+## Comprehension question attempts
+```{r comp q attempts}
+#get the number of quiz attempts for each participant
+quiz_attempts <- filtered_data %>%
+  summarize(num_quiz_trials = mean(quiz_attempts, na.rm = T))
+
+age_group_quiz_attempts <- filtered_data %>%
+  group_by(age_group) %>%
+  summarize(num_quiz_trials = mean(quiz_attempts, na.rm = T))
+
+#display
+kable(age_group_quiz_attempts, col.names = c("Age Group", "Number of Comp. Questions")) %>%
+  kable_classic(full_width = F, html_font = "Arial") %>%
+  kable_styling("striped", position = "float_left")
+```
+
+# Analyses of MaRs data
+```{r read in mars data}
+#read in mars csv or run mars analysis
+mars_data <- read_csv("data/other_data_files/mars_accuracy.csv")
+
+#source('mars_accuracy.R')
+#mars_data <- data
+
+#merge with sub info
+mars_data <- inner_join(sub_ages, mars_data, by = c("sub_id"))
+```
+
+## Model: MaRs accuracy and age
+```{r mars accuracy and age model}
+mars_data %<>%
+  mutate(age_scaled = scale_this(age),
+         mars_acc_scaled = scale_this(mars_acc))
+
+lm(mars_acc_scaled ~ age_scaled, mars_data) %>%
+  tidy() %>%
+  kable()%>%
+  kable_classic(full_width = F, html_font = "Arial") %>%
+  kable_styling("striped", position = "float_left")
+```
+
+## MaRs accuracy and age
+```{r mars accuracy and age, fig.height = 5, fig.width = 5}
+mars_acc_plot <- ggplot(mars_data, aes(x = age, y = mars_acc)) +
+  geom_point(color = color2) +
+  geom_smooth(method = "lm", color = color1, fill = color1) +
+  xlab("Age") +
+  ylab("MaRs Accuracy") +
+  casino.theme
+mars_acc_plot 
+```
+
+# Analyses of choice data
+```{r select data for learning analysis}
+#select only the columns we care about to define learning data
+learning_data <- filtered_data %>%
+      select(c(trial_index,
+           sub_id,
+           matlab_id,
+           age,
+           age_group,
+           risk_good_first,
+           block1_A,
+           block1_B, 
+           block1_C,
+           block1_D,
+           block2_A, 
+           block2_B,
+           block2_C,
+           block2_D,
+           stimulus,
+           task_part,
+           card_choice,
+           rt,
+           choice_position,
+           points_earned,
+           block,
+           num_interactions,
+           quiz_attempts)) %>%
+    filter(task_part == "real_trial") 
+
+#recode points earned, RT, card choices, risk type, and block type
+learning_data %<>% mutate(points_earned = as.numeric(points_earned),
+                         rt = as.numeric(rt),
+                         card_letter = case_when(card_choice == block1_A ~ "A",
+                                         card_choice == block2_A ~ "A",
+                                         card_choice == block1_B ~ "B",
+                                         card_choice == block2_B ~ "B",
+                                         card_choice == block1_C ~ "C",
+                                         card_choice == block2_C ~ "C",
+                                         card_choice == block1_D ~ "D",
+                                         card_choice == block2_D ~ "D"),
+                         card_type = case_when(card_letter == "A" ~ "risky",
+                                       card_letter == "B" ~ "risky",
+                                       card_letter == "C" ~ "safe",
+                                       card_letter == "D" ~ "safe"), 
+                         block_number = block,
+                         block_type = case_when(risk_good_first == "TRUE" & block == 1 ~ "Risk Good",
+                                        risk_good_first == "TRUE" & block == 2 ~ "Risk Bad",
+                                        risk_good_first == "FALSE" & block == 1 ~ "Risk Bad",
+                                        risk_good_first == "FALSE" & block == 2 ~ "Risk Good"))
+```
+
+```{r save choice data for matlab}
+#export choice data to matlab
+matlab_data <- learning_data %>%
+  filter(task_part == "real_trial") %>% 
+  select(matlab_id, age, block_type, card_letter, points_earned, choice_position) %>% 
+  mutate(choices = case_when(card_letter == "A" ~ 1,
+                             card_letter == "B" ~ 2,
+                             card_letter == "C" ~ 3,
+                             card_letter == "D" ~ 4),
+                             block_type_num = case_when(block_type == "Risk Bad" ~ 2,
+                                                        block_type == "Risk Good"~ 1),
+         rewards = points_earned / 260,
+         keys = as.numeric(choice_position) + 1) %>%
+  select(-c(choice_position, card_letter)) %>%
+  drop_na()
+
+write_csv(matlab_data, "data/other_data_files/matlab_choice_data.csv")
+```
+
+
+## Card choices across trials
+```{r plot card letter choices}
+#determine each participant's choices per trial group
+choice_data <- learning_data %>%
+  filter(task_part == "real_trial") %>% 
+  group_by(sub_id, block_type) %>%
+  mutate(trial = rank(trial_index),
+         trial_group = ceiling(trial/20)) %>%
+  ungroup() %>%
+  group_by(block_type, trial_group, card_letter, age_group) %>%
+  summarize(num_choices = n()) %>%
+  drop_na()
+
+#determine total number of choices per trial group in each age group
+age_group_choices <- learning_data %>% 
+  filter(task_part == "real_trial") %>% 
+  group_by(sub_id, block_type) %>%
+  mutate(trial = rank(trial_index),
+         trial_group = ceiling(trial/20)) %>%
+  ungroup() %>%
+  group_by(block_type, trial_group, age_group) %>%
+  summarize(tot_choices = n())
+
+#combine and compute proportions
+choice_data <- full_join(choice_data, age_group_choices, 
+                         by = c("block_type", "trial_group", "age_group")) %>% 
+  mutate(prop_choices = num_choices/tot_choices)
+
+#plot
+choice_plot <- ggplot(choice_data, aes(x = trial_group, y = prop_choices, color = card_letter)) +
+  facet_grid(rows = vars(block_type), col = vars(age_group)) +
+  scale_color_manual(values = c("blue", "darkblue", "red", "darkred"), name = "Card") +
+  ylab("Proportion of Choices") +
+  xlab("Trial Group (20 trials)") +
+  geom_line() +
+  geom_point() + 
+  casino.theme +
+    theme(panel.border = element_rect(fill = NA, size = .5),
+    panel.background = element_blank(),
+    axis.line = element_blank()) 
+choice_plot
+```
+
+## Win-stay lose-shift behavior
+```{r plot win-stay lose-shift}
+#determine each participant's choices per trial group
+wsls_data <- learning_data %>%
+  filter(task_part == "real_trial") %>% 
+  group_by(sub_id, block_type) %>%
+  mutate(trial = rank(trial_index),
+         trial_group = ceiling(trial/20),
+         prev_choice = lag(card_letter),
+         stay = case_when(prev_choice == card_letter ~ 1,
+                          prev_choice != card_letter ~ 0),
+         prev_reward = lag(points_earned),
+         prev_win = case_when(prev_reward > 0 ~ 1,
+                              prev_reward < 0 ~ 0))
+
+sub_wsls <- wsls_data %>%
+  group_by(sub_id, block_type, age_group, prev_win) %>%
+  summarize(sub_stay_prob = mean(stay, na.rm = T)) %>%
+  drop_na()
+
+age_group_wsls <- sub_wsls %>%
+  group_by(block_type, age_group, prev_win) %>%
+  summarize(stay_prob = mean(sub_stay_prob, na.rm = T),
+            se_stay_prob = se(sub_stay_prob))
+
+#plot
+wsls_plot <- ggplot(age_group_wsls, aes(x = as.factor(prev_win), y = stay_prob, fill = block_type)) +
+  facet_wrap(~age_group) +
+  scale_fill_manual(values = c(color1, color2), name = "Block Type") +
+  scale_x_discrete(labels = c("Lose", "Win")) +
+  ylab("Proportion of Choices") +
+  xlab("Previous Outcome") +
+  geom_bar(stat = "identity", position = "dodge", color = "black") +
+  geom_errorbar(aes(ymin = stay_prob - se_stay_prob, ymax = stay_prob + se_stay_prob), width = .1, position = position_dodge(width = .9)) +
+  casino.theme
+wsls_plot
+```
+
+```{r optimal choice data processing}
+#add 'optimal choice' variable to data
+optimal_choices <- learning_data %>%
+  filter(task_part == "real_trial") %>%
+  mutate(optimal_choice = case_when(block_type == "Risk Good" & card_type == "risky" ~ 1,
+                                    block_type == "Risk Good" & card_type == "safe" ~ 0,
+                                    block_type == "Risk Bad" & card_type == "risky" ~ 0,
+                                    block_type == "Risk Bad" & card_type == "safe" ~ 1),
+         risky_choice = case_when(card_type == "risky" ~ 1,
+                                  card_type == "safe" ~ 0),
+         block_order = case_when(risk_good_first == FALSE ~ "Risk Bad First",
+                                 risk_good_first == TRUE ~ "Risk Good First"),
+         block_order = factor(block_order, levels = c("Risk Good First", "Risk Bad First")))
+```
+
+## Proportion of risky choices
+```{r proportion risky choices}
+risky_choices <- optimal_choices %>%
+  group_by(sub_id, age, block_type, block_order) %>%
+  summarize(prop_risky_choices = mean(risky_choice, na.rm = T))
+
+#plot
+risky_choice_plot <- ggplot(risky_choices, aes(x = age, y = prop_risky_choices, color = block_type)) +
+  geom_point() +
+  facet_wrap(~block_order) +
+  geom_smooth(method = "lm", aes(fill = block_type)) + 
+  scale_color_manual(values = c(color1, color2), name = "Block Type", labels = c("Risk Bad", "Risk Good")) +
+  scale_fill_manual(values = c(color1, color2), name = "Block Type", labels = c("Risk Bad", "Risk Good")) +
+  xlab("Age") +
+  ylab("Proportion of Risky Choices") +
+  casino.theme
+risky_choice_plot
+```
+
+## Optimal choices across trials and block types
+```{r optimal choices}
+# determine each participant's proportion of optimal choices within each trial group
+optimal_choices_time_subs <- optimal_choices %>%
+  group_by(sub_id, block_type) %>%
+  mutate(trial = rank(trial_index),
+         trial_group = ceiling(trial/20)) %>%
+  ungroup() %>%
+  group_by(sub_id, trial_group, block_type, age_group) %>%
+  summarize(prop_optimal = mean(optimal_choice, na.rm = T))
+
+#compute age group averages of optimal choices over time
+optimal_choices_time_age_group <- optimal_choices_time_subs %>%
+  group_by(block_type, age_group, trial_group) %>%
+  summarize(mean_opt_choice = mean(prop_optimal, na.rm = T),
+            se_opt_choice = se(prop_optimal))
+
+#plot
+optimal_choice_time_plot <- ggplot(optimal_choices_time_age_group, aes(x = trial_group, y = mean_opt_choice, color = block_type)) +
+  facet_wrap(~age_group) +
+  geom_line(aes(group = block_type), size = 1) +
+  geom_errorbar(aes(ymin = mean_opt_choice - se_opt_choice, ymax = mean_opt_choice + se_opt_choice), width = .1) +
+  scale_color_manual(values = c(color1, color2),  name = "Block Type") +
+  geom_hline(yintercept = .5, color = "grey", linetype = "dashed") +
+  xlab("Trial Group (20 trials)") +
+  ylab("Proportion of Optimal Choices") +
+  casino.theme
+optimal_choice_time_plot
+```
+
+## Optimal choices across trials, block types and block orders
+```{r optimal choices over time with block order plot}
+# determine each participant's proportion of optimal choices within each trial group
+optimal_choices_time_subs <- optimal_choices %>%
+  group_by(sub_id, block_type) %>%
+  mutate(trial = rank(trial_index),
+         trial_group = ceiling(trial/20)) %>%
+  ungroup() %>%
+  group_by(sub_id, trial_group, block_type, block_order, age_group) %>%
+  summarize(prop_optimal = mean(optimal_choice, na.rm = T))
+
+#compute age group averages of optimal choices over time
+optimal_choices_time_age_group <- optimal_choices_time_subs %>%
+  group_by(block_type, trial_group, block_order, age_group) %>%
+  summarize(mean_opt_choice = mean(prop_optimal, na.rm = T),
+            se_opt_choice = se(prop_optimal))
+
+optimal_choice_time_order_plot <- ggplot(optimal_choices_time_age_group, aes(x = trial_group, y = mean_opt_choice, color = block_type)) +
+  facet_grid(rows = vars(block_order), cols = vars(age_group)) +
+  geom_line(aes(group = block_type), size = 1) +
+  geom_errorbar(aes(ymin = mean_opt_choice - se_opt_choice, ymax = mean_opt_choice + se_opt_choice), width = .1) +
+  scale_color_manual(values = c(color1, color2), labels = c("Risk Bad", "Risk Good"), name = "Block Type") +
+  geom_hline(yintercept = .5, color = "grey", linetype = "dashed") +
+  xlab("Trial Group (20 trials)") +
+  ylab("Proportion of Optimal Choices") +
+  casino.theme +
+    theme(panel.border = element_rect(fill = NA, size = .5),
+    panel.background = element_blank(),
+    axis.line = element_blank()) 
+optimal_choice_time_order_plot
+```
+
+## Optimal choices across block (1st vs. 2nd)
+```{r optimal choices across block numbers plot}
+# determine each participant's proportion of optimal choices within each trial group
+optimal_choices_time_subs <- optimal_choices %>%
+  group_by(sub_id, block_type) %>%
+  mutate(trial = rank(trial_index),
+         trial_group = ceiling(trial/20)) %>%
+  ungroup() %>%
+  group_by(sub_id, block_type, block_number, age_group) %>%
+  summarize(prop_optimal = mean(optimal_choice, na.rm = T))
+
+#compute age group averages of optimal choices over time
+optimal_choices_age_group <- optimal_choices_time_subs %>%
+  group_by(block_type, block_number, age_group) %>%
+  summarize(mean_opt_choice = mean(prop_optimal, na.rm = T),
+            se_opt_choice = se(prop_optimal))
+
+#plot                                
+optimal_choice_order_plot <- ggplot(optimal_choices_age_group, aes(x = factor(block_number), y = mean_opt_choice)) +
+  facet_wrap(~age_group) +
+    geom_errorbar(aes(ymin = mean_opt_choice - se_opt_choice, ymax = mean_opt_choice + se_opt_choice, color = block_type), width = .1) +
+  geom_point(size = 4, shape = 21, color = "black", aes(fill = block_type)) +
+  scale_fill_manual(values = c(color1, color2),  name = "Block Type") + 
+  scale_color_manual(values = c(color1, color2),  name = "Block Type") + 
+  geom_hline(yintercept = .5, color = "grey", linetype = "dashed") +
+  xlab("Block") +
+  ylab("Proportion of Optimal Choices") +
+  casino.theme
+optimal_choice_order_plot
+```
+
+## Model: Optimal choices across ages, trials, block types, and blocks (1st vs. 2nd)
+```{r optimal choices w/ block order regression, include = F}
+#prep data
+optimal_choice_data <- optimal_choices %>%
+  group_by(sub_id, block) %>%
+  mutate(trial = rank(trial_index)) %>%
+  ungroup() %>%
+  select(sub_id, optimal_choice, age, trial, block_type, block_number) %>%
+  drop_na() %>%
+  mutate(trial_scaled = scale_this(trial),
+         age_scaled = scale_this(age),
+         block_number = factor(block_number))
+
+#run model
+opt_choice_model <- mixed(optimal_choice ~ age_scaled * trial_scaled * block_type * block_number + 
+                          (trial_scaled * block_type|sub_id), 
+                          data = optimal_choice_data,
+                          family = "binomial", 
+                          method = "LRT",
+                          control = glmerControl(optimizer = "bobyqa", optCtrl=list(maxfun=1e6)))
+#Note: model does not converge with block number in the RE.
+```
+
+```{r display opt choice model output}
+nice(opt_choice_model)
+```
+
+## Model: Optimal choices controlling for mars accuracy
+```{r optimal choices w/ mars regression, include = F}
+#get mars accuracy from dataframe
+mars_acc_data <- mars_data %>%
+  select(sub_id, mars_acc)
+
+#add mars
+optimal_choice_data <- full_join(optimal_choice_data, mars_acc_data, 
+                                 by = c("sub_id")) %>%
+  mutate(mars_acc_scaled = scale_this(mars_acc))
+
+opt_choice_model.mars <- mixed(optimal_choice ~ age_scaled * trial_scaled * block_type * block_number + mars_acc_scaled + (trial_scaled * block_type |sub_id), 
+                          data = optimal_choice_data,
+                          family = "binomial", 
+                          method = "LRT",
+                          expand_re = T,
+                          control = glmerControl(optimizer = "bobyqa", optCtrl=list(maxfun=1e6)))
+
+```
+
+```{r display opt choice model w/ mars output}
+#display model output
+nice(opt_choice_model.mars)
+```
+
+# Analyses of explicit reports of deck 'luckiness' and 'value'
+```{r process explicit report data}
+#store participant explicit reports in a separate data frame
+explicit_reports <- filtered_data %>%
+  filter(task_part == "explicit_rating") %>%
+  select(sub_id, stimulus, response, rt, trial_index, age, age_group, block) %>%
+  group_by(sub_id, age, age_group, stimulus, block) %>%
+  mutate(report_type = case_when(trial_index == min(trial_index) ~ 'luckiness',
+                                 trial_index > min(trial_index) ~ 'value')) %>%
+  select(-trial_index) %>%
+  rename(card_choice = stimulus)
+
+#Get the letter and block type for each stimulus
+stim_types <- learning_data %>%
+  select(sub_id, card_choice, card_letter, card_type, block_type) %>%
+  unique()
+
+#merge w/ explicit reports
+explicit_reps <- full_join(stim_types, 
+                           explicit_reports, 
+                           by = c("sub_id", "card_choice"))
+```
+
+## Luckiness reports across age groups, card types, block types, and block numbers
+```{r explicit reports luckiness plot}
+#compute mean ratings
+mean_reports <- explicit_reps %>%
+  group_by(sub_id, card_type, block_type, report_type, age_group, block) %>%
+  summarize(mean_report = mean(response, na.rm = T)) %>%
+  filter(report_type == "luckiness") 
+
+#compute mean ratings per group
+mean_reports_group <- mean_reports %>%
+  group_by(card_type, block_type, report_type, age_group, block) %>%
+  summarize(group_report = mean(mean_report),
+            N = n(),
+            sd_report = sd(mean_report),
+            se_report = sd_report/sqrt(N)) %>%
+  filter(report_type == "luckiness") %>%
+  drop_na()
+
+#make barplot
+mean_reports_group_plot <- ggplot(mean_reports_group, aes(x = factor(block), fill = card_type, y = group_report)) +
+  facet_grid(rows = vars(block_type), cols = vars(age_group)) +
+  geom_bar(stat = "identity", position = "dodge",  color = "black") +
+  geom_errorbar(aes(ymin = group_report - se_report, ymax = group_report +se_report), position = position_dodge(width = .9), width = .1) +
+  scale_fill_manual(values = c(color1, color2), name = "Card Type", labels = c("Risky", "Safe")) +
+  xlab("Block") +
+  ylab("Luckiness Report") +
+  casino.theme +
+  geom_hline(yintercept = 0) +
+  theme(panel.border = element_rect(fill = NA, size = .5),
+    panel.background = element_blank(),
+    axis.line = element_blank()) 
+mean_reports_group_plot
+```
+
+## Value reports across age groups, card types, block types, and block numbers
+```{r explicit reports value plot}
+##compute mean ratings
+mean_reports <- explicit_reps %>%
+  group_by(sub_id, card_type, block_type, report_type, age_group, block) %>%
+  summarize(mean_report = mean(response, na.rm = T)) %>%
+  filter(report_type == "value")
+
+#compute mean ratings per group
+mean_reports_group <- mean_reports %>%
+  group_by(card_type, block_type, report_type, age_group, block) %>%
+  summarize(group_report = mean(mean_report),
+            N = n(),
+            sd_report = sd(mean_report),
+            se_report = sd_report/sqrt(N)) %>%
+  filter(report_type == "value") %>%
+  drop_na()
+
+#make barplot
+mean_reports_group_plot <- ggplot(mean_reports_group, aes(x = factor(block), fill = card_type, y = group_report)) +
+  facet_grid(rows = vars(block_type), cols = vars(age_group)) +
+  geom_bar(stat = "identity", position = "dodge",  color = "black") +
+  geom_errorbar(aes(ymin = group_report - se_report, ymax = group_report +se_report), position = position_dodge(width = .9), width = .1) +
+  scale_fill_manual(values = c(color1, color2), name = "Card Type", labels = c("Risky", "Safe")) +
+  xlab("Block") +
+  ylab("Value Report") +
+  casino.theme +
+  geom_hline(yintercept = 0) +
+  theme(panel.border = element_rect(fill = NA, size = .5),
+    panel.background = element_blank(),
+    axis.line = element_blank()) 
+mean_reports_group_plot
+```
+
+## Model: Luckiness reports across age groups
+```{r luckiness reports model, include = F}
+luckiness_data <- explicit_reps %>%
+  filter(report_type == "luckiness") %>%
+  drop_na() %>%
+  mutate(age_scaled = scale_this(age),
+         block_number = as.factor(block))
+
+luckiness.model <- mixed(response ~ age_scaled * card_type * block_type * block_number 
+                         + (1 |sub_id), 
+                          data = luckiness_data,
+                          method = "S",
+                          expand_re = T,
+                         control = lmerControl(optimizer = "bobyqa", optCtrl=list(maxfun=1e6)))
+```
+
+```{r display luckiness model output}
+nice(luckiness.model)
+```
+
+## Model: Value reports across age groups
+```{r value reports model, include = F}
+value_data <- explicit_reps %>%
+  filter(report_type == "value") %>%
+  drop_na() %>%
+  mutate(age_scaled = scale_this(age),
+         block_number = as.factor(block))
+
+
+value.model <- mixed(response ~ age_scaled * card_type * block_type * block_number 
+                         + (1|sub_id), 
+                          data = value_data,
+                          method = "S",
+                          expand_re = T,
+                          control = lmerControl(optimizer = "bobyqa", optCtrl=list(maxfun=1e6)))
+```
+
+```{r display value model output}
+nice(value.model)
+```

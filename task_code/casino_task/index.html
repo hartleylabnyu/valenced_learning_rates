@@ -1,0 +1,704 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <title>Card game</title>
+
+  <!-- Load libraries -->
+  <script src="jspsych-6.1.0/jspsych.js"></script>
+
+  <!-- Load jsPsych plug-ins -->
+  <script src="jspsych-6.1.0/plugins/jspsych-html-keyboard-response.js"></script>
+  <script src="jspsych-6.1.0/plugins/jspsych-html-button-response.js"></script>
+  <script src="jspsych-6.1.0/plugins/jspsych-image-keyboard-response.js"></script>
+  <script src="jspsych-6.1.0/plugins/jspsych-audio-keyboard-response.js"></script>
+  <script src="jspsych-6.1.0/plugins/jspsych-image-slider-response.js"></script>
+  <script src="jspsych-6.1.0/plugins/jspsych-fullscreen.js"></script>
+
+  <!-- Load custom plug-ins -->
+  <script src="js/card_task_settings.js"></script>
+  <script src="js/card_task_instructions.js"></script>
+  <script src="js/copied_functions.js"></script>
+  <script src="js/jspsych-card-selection-trial.js"></script>
+  <script src="js/jspsych-casino-fixation.js"></script>
+  <script src="js/jspsych-casino-keyboard-response.js"></script>
+  <script src="js/jspsych-casino-comp_q.js"></script>
+  <script src="js/jspsych-casino-button-response.js"></script>
+  <script src="js/jspsych-audio-button-response.js"></script>
+  <script src="js/jspsych-casino-image-slider-response.js"></script>
+
+  <!-- Load CSS styles -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/4.1.1/animate.min.css">
+  <link rel="stylesheet" href="jspsych-6.1.0/css/jspsych.css">
+  <link rel="stylesheet" href="css/card_task.css">
+
+  <!-- Load pavlovia requirements -->
+  <script src="lib/jspsych-pavlovia-3.0.0.js"></script>
+  <script src="lib/vendors/jquery-2.2.0.min.js"></script>
+
+  <!-- Get rid of pinterest -->
+  <meta name="pinterest" content="nopin" />
+  <meta name="pinterest" content="nohover" />
+</head>
+
+<body></body>
+<script>
+
+  /* create timeline */
+  var timeline = [];
+
+/* DEFINE EACH TRIAL TYPE ----------------------------------- */
+
+  /* initialize pavlovia connection */ 
+    var pavlovia_init = {
+    type: "pavlovia",
+    command: "init"
+  };
+
+
+  /* end pavlovia connection */
+  var pavlovia_finish = {
+    type: "pavlovia",
+    command: "finish"
+  };
+
+  /* define full screen enter */
+  var fullscreen_enter = {
+    type: 'fullscreen',
+    fullscreen_mode: true
+  };
+
+  /* start game */
+    var start_game = {
+    type: 'fullscreen',
+    fullscreen_mode: true,
+    message: '<p>Great! Click "continue" to begin the game. </p>', 
+  };
+
+
+    /* audio test */
+var beep_test = {
+    type: 'audio-keyboard-response',
+    stimulus: 'audio/beep_loop.wav',
+    choices: jsPsych.ALL_KEYS,
+    prompt: 'Press the space bar to proceed to the audio test.',
+};
+
+var audio_test_1 = {
+    type: 'audio-button-response',
+    stimulus: 'audio/turtle.mp3',
+    choices: ['repeat', 'fish', 'tiger', 'turtle', 'shark'],
+    correct_answer: 3,
+    prompt: 'Click on the word that you just heard.',
+    incorrect_prompt: 'Incorrect, please adjust your volume and try again.',
+    margin_vertical: '40px',
+    margin_horizontal: '10px',
+    button_html:[
+        '<img src="img/replay.png" height="200px" width="200px"/>',
+        '<img src="img/fish.png" height="200px" width="200px"/>',
+        '<img src="img/tiger.png" height="200px" width="200px"/>',
+        '<img src="img/turtle.png" height="200px" width="200px"/>',
+        '<img src="img/shark.png" height="200px" width="200px"/>'
+    ],
+    post_trial_gap: 1000
+};
+
+
+var audio_test_2 = {
+    type: 'audio-button-response',
+    stimulus: 'audio/shark.mp3',
+    choices: ['repeat', 'turtle', 'shark', 'fish', 'tiger'],
+    correct_answer: 2,
+    prompt: 'Again, click on the word that you just heard.',
+    incorrect_prompt: 'Incorrect, please adjust your volume and try again.',
+    margin_vertical: '40px',
+    margin_horizontal: '10px',
+    button_html:[
+        '<img src="img/replay.png" height="200px" width="200px"/>',
+        '<img src="img/turtle.png" height="200px" width="200px"/>',
+        '<img src="img/shark.png" height="200px" width="200px"/>',
+        '<img src="img/fish.png" height="200px" width="200px"/>',
+        '<img src="img/tiger.png" height="200px" width="200px"/>'
+    ],
+    post_trial_gap: 1000
+};
+
+  /* define instructions trial */
+  var instructions_trial = {
+    type: "casino-keyboard-response",
+    stimulus: jsPsych.timelineVariable('stimulus'),
+    audio: jsPsych.timelineVariable('audio'),
+    continue_message: jsPsych.timelineVariable('continue_message'),
+    continue_delay: jsPsych.timelineVariable('continue_delay'),
+    choices: jsPsych.timelineVariable('choices'),
+    on_finish: function(timestamp){
+      var timestamp = (new Date).toISOString().replace(/z|t/gi,' ').trim();
+      jsPsych.data.addDataToLastTrial({timestamp});}    
+    };
+
+      /* define great job */
+    var great_job = {
+    type: "casino-keyboard-response",
+    stimulus: 'Great job!',
+    audio: great_job_audio,
+    block: 1,
+    continue_delay: 500,
+    choices: 'f',
+    on_finish: function(timestamp){
+      var timestamp = (new Date).toISOString().replace(/z|t/gi,' ').trim();
+      jsPsych.data.addDataToLastTrial({timestamp});}    
+    };
+
+  /* define view cards during instructions */
+    var view_cards = {
+    type: "card-selection-trial",
+    data: jsPsych.timelineVariable('data'),
+    block: jsPsych.timelineVariable('block'),
+    card_decks: jsPsych.timelineVariable('card_decks'),
+    rewards_AB: jsPsych.timelineVariable('rewardsAB'),
+    rewards_CD: jsPsych.timelineVariable('rewardsCD'),
+    feedback_duration: 2000,
+    choice_duration: 1000,
+    display_keys: false,
+    display_selection_time: 500,
+    disp_warning: false,
+    on_finish: function(timestamp){
+      var timestamp = (new Date).toISOString().replace(/z|t/gi,' ').trim();
+      jsPsych.data.addDataToLastTrial({timestamp});}    
+    };
+
+
+
+  /* define comprehension question */
+  var comp_q = {
+    type: "casino-comp_q",
+    audio: jsPsych.timelineVariable('audio'),
+    stimulus: jsPsych.timelineVariable('stimulus'),
+    on_finish: function(timestamp){
+      var timestamp = (new Date).toISOString().replace(/z|t/gi,' ').trim();
+      jsPsych.data.addDataToLastTrial({timestamp});}    
+    };
+
+  /* define comprehension answer */
+  var comp_a = {
+    type: "casino-keyboard-response",
+    choices: jsPsych.timelineVariable('choices'),
+    stimulus: function () {
+      var last_trial_answer = jsPsych.data.get().last(1).values()[0].key_press;
+      var correct_response = jsPsych.timelineVariable('correct_key', true);
+      if (last_trial_answer == correct_response) {
+        return jsPsych.timelineVariable('right_response', true)
+      } else {
+        return jsPsych.timelineVariable('wrong_response', true)
+      }
+    },
+    audio: function (){
+      var last_trial_answer = jsPsych.data.get().last(1).values()[0].key_press;
+      var correct_response = jsPsych.timelineVariable('correct_key', true);
+      if (last_trial_answer == correct_response) {
+        return jsPsych.timelineVariable('right_audio', true)
+      } else {
+        return jsPsych.timelineVariable('wrong_audio', true)
+      }
+    },
+    on_finish: function(data){
+      var last_trial_answer = jsPsych.data.get().last(2).values()[0].key_press;
+      var correct_response = jsPsych.timelineVariable('correct_key', true);
+      if (last_trial_answer == correct_response) {
+        data.correct = true;}
+      else {data.correct = false};
+      var timestamp = (new Date).toISOString().replace(/z|t/gi,' ').trim();
+      jsPsych.data.addDataToLastTrial({timestamp});}  
+    };
+
+  /* define real trial */
+  var card_selection_trial = {
+    type: "card-selection-trial",
+    data: jsPsych.timelineVariable('data'),
+    block: jsPsych.timelineVariable('block'),
+    card_decks: jsPsych.timelineVariable('card_decks'),
+    rewards_AB: jsPsych.timelineVariable('rewardsAB'),
+    rewards_CD: jsPsych.timelineVariable('rewardsCD'),
+    feedback_duration: 2000,
+    choice_duration: 10000,
+    display_selection_time: 500,
+    on_finish: function(data) {
+      var block = jsPsych.timelineVariable('block', true);
+      if (!isNaN(parseInt(data.points_earned))){
+      if (block == 0){
+        practice_tokens = practice_tokens + parseInt(data.points_earned);
+      }
+      else if (block == 1){
+        block1_tokens = block1_tokens + parseInt(data.points_earned);}
+      else if (block == 2){
+        block2_tokens = block2_tokens + parseInt(data.points_earned);}
+      };
+      var timestamp = (new Date).toISOString().replace(/z|t/gi,' ').trim();
+      jsPsych.data.addDataToLastTrial({timestamp});}    
+    };
+    
+
+    /* define fixation */
+  var fixation = {
+    type: 'casino-fixation',
+    block: jsPsych.timelineVariable('block'),
+    choices: jsPsych.NO_KEYS,
+    trial_duration: iti_time,
+    data: { task_part: 'fixation' },
+    on_finish: function(timestamp){
+      var timestamp = (new Date).toISOString().replace(/z|t/gi,' ').trim();
+      jsPsych.data.addDataToLastTrial({timestamp});}    
+    };
+
+    /* define explicit question */
+    var explicit_question = {
+      type: 'casino-image-slider-response',
+      min: -100,
+      max: 100,
+      start: 0,
+      labels: ["very unlucky", "right in the middle", "very lucky"],
+      stimulus_width: 250,
+      stimulus: jsPsych.timelineVariable('stimulus'),
+      button_label: "Submit", 
+      audio: eq_audio[0],
+      prompt: "Think about the cards you picked from this deck. <br> You may have picked some bad cards that made you lose tokens and some good cards that made you win tokens. <br> Overall, would you say this is an unlucky deck or a lucky deck? <br> <i> Use the mouse to move the slider to rate how lucky the deck is. </i> <br> <br> <br>",
+      post_trial_gap: 500
+    }
+
+    /* define explicit rating */
+    var explicit_rating = {
+      type: 'casino-image-slider-response',
+      min: -300,
+      max: 300,
+      start: 0,
+      labels: [-300, -250, -200, -150, -100, -50, 0, 50, 100, 150, 200, 250, 300],
+      stimulus_width: 250,
+      stimulus: jsPsych.timelineVariable('stimulus'),
+      button_label: "Submit", 
+      audio: eq_audio[1],
+      prompt: "On average, how many tokens do you think you received from each card in this deck? <br> <i> Use the mouse to move the slider to select a number of tokens. </i> <br> <br> <br>",
+      post_trial_gap: 500
+    }
+
+  /* define break messages */
+    var break_screen_1 = {
+    type: "casino-keyboard-response",
+    stimulus: "Take a break.",
+    audio: blank_audio,
+    choices: '8',
+    block: 1,
+    data: {task_part: 'break'},
+    on_finish: function(timestamp){
+      var timestamp = (new Date).toISOString().replace(/z|t/gi,' ').trim();
+      jsPsych.data.addDataToLastTrial({timestamp});}    
+    };
+
+  var break_screen_2 = {
+    type: "casino-keyboard-response",
+    stimulus: "Take a break.",
+    audio: blank_audio,
+    choices: '2',
+    block: 2,
+    data: {task_part: 'break'},
+    on_finish: function(timestamp){
+      var timestamp = (new Date).toISOString().replace(/z|t/gi,' ').trim();
+      jsPsych.data.addDataToLastTrial({timestamp});}    
+    };
+
+  /* define end screens */
+    var practice_end = {
+      type: "casino-keyboard-response",
+      stimulus: function() {
+        return 'You earned '+ function(){return practice_tokens;}() +' tokens during the practice round!'
+      }, 
+      choices: 'r',
+      block: -1,
+      audio: blank_audio,
+    on_finish: function(timestamp){
+      var timestamp = (new Date).toISOString().replace(/z|t/gi,' ').trim();
+      jsPsych.data.addDataToLastTrial({timestamp});}    
+    };
+
+    var block1_end = {
+      type: "casino-keyboard-response",
+      stimulus: function() {
+        return 'You earned '+ function(){return block1_tokens;}() +' tokens in the first round!'
+      }, 
+      choices: 'y',
+      block: 1,
+      audio: blank_audio,
+      on_finish: function(timestamp){
+      var timestamp = (new Date).toISOString().replace(/z|t/gi,' ').trim();
+      jsPsych.data.addDataToLastTrial({timestamp});}    
+    };
+
+    var block2_end = {
+      type: "casino-keyboard-response",
+      stimulus: function() {
+        return 'You earned '+ function(){return block2_tokens;}() +' tokens in the second round!'
+      }, 
+      choices: 'e',
+      block: 2,
+      audio: blank_audio,
+      on_finish: function(timestamp){
+      var timestamp = (new Date).toISOString().replace(/z|t/gi,' ').trim();
+      jsPsych.data.addDataToLastTrial({timestamp});}    
+    };
+
+
+    var end = {
+      type: "casino-keyboard-response",
+      stimulus: function() {
+        var total_tokens = block1_tokens + block2_tokens;
+        if (total_tokens > 5000){
+          total_money = 5;
+        } else if (total_tokens > 4000){
+          total_money = 4;
+        } else if (total_tokens > 3000){
+          total_money = 3;
+        } else if (total_tokens > 2000){
+          total_money = 2;
+        } else if (total_tokens > 0){
+          total_money = 1;
+        } else {total_money = 0};
+        return 'You won '+ function(){return total_tokens;}() +' tokens during the game! <br> That means you earned ' + function(){return total_money;}() +' bonus dollars.';
+      }, 
+      choices: 'f',
+      block: 2,
+      audio: blank_audio,
+      on_finish: function(timestamp){
+      var timestamp = (new Date).toISOString().replace(/z|t/gi,' ').trim();
+      jsPsych.data.addDataToLastTrial({timestamp});}    
+    };
+
+
+
+  /* DEFINE BLOCKS ----------------------------------- */
+
+
+  /* practice blocks */
+  var p_1 = {
+    timeline: [card_selection_trial],
+    timeline_variables: pre_practice_cards,
+    data: jsPsych.timelineVariable('data'),
+    valid_choices: [key1],
+    highlighted_choice: 0,
+    sample: {
+      type: 'fixed-repetitions',
+      size: 1,
+    },
+  }
+
+  var p_2 = {
+    timeline: [card_selection_trial],
+    timeline_variables: pre_practice_cards,
+    data: jsPsych.timelineVariable('data'),
+    valid_choices: [key3],
+    highlighted_choice: 2,
+    sample: {
+      type: 'fixed-repetitions',
+      size: 1,
+    },
+  }
+
+  var p_3 = {
+    timeline: [card_selection_trial],
+    timeline_variables: pre_practice_cards,
+    data: jsPsych.timelineVariable('data'),
+    valid_choices: [key2],
+    highlighted_choice: 1,
+    sample: {
+      type: 'fixed-repetitions',
+      size: 1,
+    },
+  }
+
+  var p_4 = {
+    timeline: [card_selection_trial],
+    timeline_variables: pre_practice_cards,
+    data: jsPsych.timelineVariable('data'),
+    valid_choices: [key4],
+    highlighted_choice: 3,
+    sample: {
+      type: 'fixed-repetitions',
+      size: 1,
+    },
+  }
+
+  var practice_trials = {
+    timeline: [fixation, card_selection_trial],
+    timeline_variables: practice_cards,
+    data: jsPsych.timelineVariable('data'),
+    sample: {
+      type: 'fixed-repetitions',
+      size: 10,
+    }
+  }
+
+    /* define card selection blocks */
+    var card_selection_block_1 = {
+    timeline: [fixation, card_selection_trial],
+    timeline_variables: cards_block_1,
+    data: jsPsych.timelineVariable('data'),
+    sample: {
+      type: 'fixed-repetitions',
+      size: 50,
+    }
+  }
+    var card_selection_block_2 = {
+    timeline: [fixation, card_selection_trial],
+    timeline_variables: cards_block_2,
+    data: jsPsych.timelineVariable('data'),
+    sample: {
+      type: 'fixed-repetitions',
+      size: 50,
+    }
+  }
+
+    /* define explicit ratings */
+    var explicit_ratings_1 = {
+    timeline: [explicit_question, explicit_rating],
+    timeline_variables: explicit_ratings_stim_1,
+    data: jsPsych.timelineVariable('data'),
+    block: jsPsych.timelineVariable('block')
+    }
+
+    var explicit_ratings_2 = {
+    timeline: [explicit_question, explicit_rating],
+    timeline_variables: explicit_ratings_stim_2,
+    data: jsPsych.timelineVariable('data'),
+    block: jsPsych.timelineVariable('block')
+    }
+
+
+
+  /* define instructions blocks */
+    var instructions_block_1_1 = {
+    timeline: [instructions_trial],
+    timeline_variables: instructions_1, 
+    data: jsPsych.timelineVariable('data'),
+    block: 0
+  };
+
+  var instructions_decks = {
+    timeline: [view_cards],
+    timeline_variables: practice_cards,
+    data: jsPsych.timelineVariable('data'),
+    block: 0
+  }
+
+  var instructions_block_1_2 = {
+    timeline: [instructions_trial],
+    timeline_variables: instructions_2, 
+    data: jsPsych.timelineVariable('data'),
+    block: 0
+  };
+
+
+  var instructions_block_1_3 = {
+    timeline: [instructions_trial],
+    timeline_variables: instructions_3, 
+    data: jsPsych.timelineVariable('data'),
+    block: 0
+  };
+
+
+  var instructions_block_1_4 = {
+    timeline: [instructions_trial],
+    timeline_variables: instructions_4, 
+    data: jsPsych.timelineVariable('data'),
+    block: 0
+  };
+
+  var instructions_block_1_5 = {
+    timeline: [instructions_trial],
+    timeline_variables: instructions_5, 
+    data: jsPsych.timelineVariable('data'),
+    block: 0
+  };
+
+  var instructions_block_1_6 = {
+    timeline: [instructions_trial],
+    timeline_variables: instructions_6, 
+    data: jsPsych.timelineVariable('data'),
+    block: 0
+  };
+
+  var instructions_block_1_7 = {
+    timeline: [instructions_trial],
+    timeline_variables: instructions_7, 
+    data: jsPsych.timelineVariable('data'),
+    block: 0
+  };
+
+  var instructions_block_1_8 = {
+    timeline: [instructions_trial],
+    timeline_variables: instructions_8, 
+    data: jsPsych.timelineVariable('data'),
+    block: 0
+  };
+
+  var instructions_block_1_9= {
+    timeline: [instructions_trial],
+    timeline_variables: instructions_9, 
+    data: jsPsych.timelineVariable('data'),
+    block: 1
+  };
+
+  var instructions_block_2_1 = {
+    timeline: [instructions_trial],
+    timeline_variables: instructions_10, 
+    data: jsPsych.timelineVariable('data'),
+    block: 1
+  };
+
+  var instructions_block_2_2 = {
+    timeline: [instructions_trial],
+    timeline_variables: instructions_11, 
+    data: jsPsych.timelineVariable('data'),
+    block: 2
+  };
+
+
+  /* Comprehension questions */
+  var comp_question_1 = {
+    timeline: [comp_q, comp_a],
+    timeline_variables: comp_question1,
+    //data: jsPsych.timelineVariable('data'),
+    loop_function: function(data) {
+      console.log(jsPsych.data.get().last(1).values()[0].correct);
+      var last_trial_correct = jsPsych.data.get().last(1).values()[0].correct;
+      if(last_trial_correct){return false;}
+      else {return true;}
+      },
+    block: 0
+  }
+
+  var comp_question_2 = {
+    timeline: [comp_q, comp_a],
+    timeline_variables: comp_question2,
+    //data: jsPsych.timelineVariable('data'),
+    loop_function: function(data) {
+      console.log(jsPsych.data.get().last(1).values()[0].correct);
+      var last_trial_correct = jsPsych.data.get().last(1).values()[0].correct;
+      if(last_trial_correct){return false;}
+      else {return true;}
+      },
+    block: 0
+  }
+
+  var comp_question_3 = {
+    timeline: [comp_q, comp_a],
+    timeline_variables: comp_question3,
+    //data: jsPsych.timelineVariable('data'),
+    loop_function: function(data) {
+      console.log(jsPsych.data.get().last(1).values()[0].correct);
+      var last_trial_correct = jsPsych.data.get().last(1).values()[0].correct;
+      if(last_trial_correct){return false;}
+      else {return true;}
+      },
+    block: 0
+  }
+
+
+
+
+  ////////////////////////////////////////////
+  // CREATE TIMELINE AND RUN EXPERIMENT //
+  ////////////////////////////////////////////
+
+    timeline.push(pavlovia_init);
+    timeline.push(fullscreen_enter);
+    timeline.push(beep_test);
+    timeline.push(audio_test_1);
+    timeline.push(audio_test_2);
+    timeline.push(start_game);
+    timeline.push(instructions_block_1_1);
+    timeline.push(instructions_decks);
+    timeline.push(instructions_block_1_2);
+    timeline.push(p_1);
+    timeline.push(instructions_block_1_3);
+    timeline.push(p_2);
+    timeline.push(instructions_block_1_4);
+    timeline.push(p_3);
+    timeline.push(instructions_block_1_5);
+    timeline.push(p_4);
+    timeline.push(instructions_block_1_6);
+    timeline.push(practice_trials);
+    timeline.push(practice_end);
+    timeline.push(instructions_block_1_7);
+    timeline.push(comp_question_1);
+    timeline.push(comp_question_2);
+    timeline.push(comp_question_3);
+    timeline.push(instructions_block_1_8);
+    timeline.push(instructions_block_1_9);
+    timeline.push(card_selection_block_1);
+    timeline.push(break_screen_1);
+    timeline.push(card_selection_block_1);
+    timeline.push(block1_end);
+    timeline.push(explicit_ratings_1);
+    timeline.push(instructions_block_2_1);
+    timeline.push(instructions_block_2_2);
+    timeline.push(card_selection_block_2);
+    timeline.push(break_screen_2);
+    timeline.push(card_selection_block_2);
+    timeline.push(block2_end);
+    timeline.push(end);
+    timeline.push(explicit_ratings_2);
+    timeline.push(great_job);
+    timeline.push(pavlovia_finish);
+
+  /** GET SUB ID BASED ON URL **/
+  var urlvar = jsPsych.data.urlVariables();
+
+  /** determine where to redirect based on version **/
+  var redirect_link = 'https://www.google.com/'; //placeholder for code-sharing. normally redirects to mars.
+
+  /* start and end the experiment */
+  jsPsych.init({
+    timeline: timeline,
+    preload_images: [decks_1, decks_2, practice_decks, deck_backs, backgrounds, "img/replay.png", "img/turtle.png", "img/shark.png", "img/fish.png", "img/tiger.png"],
+    preload_audio: [instructions, comp_q_audio, eq_audio, great_job_audio, blank_audio],
+    on_trial_start: function (data) {
+      jsPsych.data.get().addToAll({sub_id: urlvar.participant});
+      jsPsych.data.get().addToAll({risk_good_first: risk_good_first});
+      jsPsych.data.get().addToAll({block1_A: decks_1[0]});
+      jsPsych.data.get().addToAll({block1_B: decks_1[1]});
+      jsPsych.data.get().addToAll({block1_C: decks_1[2]});
+      jsPsych.data.get().addToAll({block1_D: decks_1[3]});
+      jsPsych.data.get().addToAll({block2_A: decks_2[0]});
+      jsPsych.data.get().addToAll({block2_B: decks_2[1]});
+      jsPsych.data.get().addToAll({block2_C: decks_2[2]});
+      jsPsych.data.get().addToAll({block2_D: decks_2[3]});
+      var interaction_data = jsPsych.data.getInteractionData();
+      var blur_events = interaction_data.filter({ event: 'blur' });
+      var focus_events = interaction_data.filter({ event: 'focus' });
+      var fullscreenenter_events = interaction_data.filter({ event: 'fullscreenenter' });
+      var fullscreenexit_events = interaction_data.filter({ event: 'fullscreenexit' });
+      jsPsych.data.get().addToLast({ interactions: interaction_data.csv() });
+      jsPsych.data.get().addToLast({ blur_events: blur_events.csv() });
+      jsPsych.data.get().addToLast({ focus_events: focus_events.csv() });
+      jsPsych.data.get().addToLast({ fullscreenenter_events: fullscreenenter_events.csv() });
+      jsPsych.data.get().addToLast({ fullscreenexit_events: fullscreenexit_events.csv() });
+    },
+    on_interaction_data_update: function (data) {
+      var interaction_data = jsPsych.data.getInteractionData();
+      var blur_events = interaction_data.filter({ event: 'blur' });
+      var focus_events = interaction_data.filter({ event: 'focus' });
+      var fullscreenenter_events = interaction_data.filter({ event: 'fullscreenenter' });
+      var fullscreenexit_events = interaction_data.filter({ event: 'fullscreenexit' });
+      jsPsych.data.get().addToLast({ interactions: interaction_data.csv() });
+      jsPsych.data.get().addToLast({ blur_events: blur_events.csv() });
+      jsPsych.data.get().addToLast({ focus_events: focus_events.csv() });
+      jsPsych.data.get().addToLast({ fullscreenenter_events: fullscreenenter_events.csv() });
+      jsPsych.data.get().addToLast({ fullscreenexit_events: fullscreenexit_events.csv() });
+    },
+    on_finish: function () {
+      //jsPsych.data.get().localSave('csv', file_name);
+      document.body.innerHTML = '<p> <center> Please wait. You will be redirected to the next game in 10 seconds. </center> </p>'
+      setTimeout(function () { location.href = redirect_link}, 10000)
+    }
+  });
+</script>
+
+</html>

@@ -1,0 +1,256 @@
+/* CSS for Card Task */
+
+/* get rid of pinterest */
+.sw-pinit-button,
+div.sw-pinit a.sw-pinit-button:hover:before {
+    display: none;
+} 
+
+/* ---------------------------------- */
+/* Card Task Styling                */
+/* ---------------------------------- */
+
+
+/* Container for card task */
+.casino-wrap[block="-1"] {
+  height: 100vh;
+  width: 100vw;
+  max-width:100%;
+  background-image: url("../img/practice_background.png");
+  background-size: contain;
+  background-repeat: no-repeat;
+  margin: 0px;
+  padding: 0px;
+}
+.casino-wrap[block="0"] {
+  height: 100vh;
+  width: 100vw;
+  max-width:100%;
+  background-image: url("../img/practice_background.png");
+  background-size: contain;
+  background-repeat: no-repeat;
+  margin: 0px;
+  padding: 0px;
+}
+
+.casino-wrap[block="1"] {
+  height: 100vh;
+  width: 100vw;
+  max-width:100%;
+  background-image: url("../img/background_1.png");
+  background-size: contain;
+  background-repeat: no-repeat;
+  margin: 0px;
+  padding: 0px;
+}
+
+.casino-wrap[block="2"] {
+  height: 100vh;
+  width: 100vw;
+  max-width:100%;
+  background-image: url("../img/background_2.png");
+  background-size: contain;
+  background-repeat: no-repeat;
+  margin: 0px;
+  padding: 0px;
+}
+
+/* Card deck layout */
+.casino-grid {
+  display: grid;
+  grid-template-columns: 25% 25% 25% 25%;
+  grid-template-rows: 33%;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  -webkit-transform: translate3d(-50%, -50%, 0);
+  transform: translate3d(-50%, -50%, 0);
+  height: 50vh;
+  width: 50vw;
+  margin: 0;
+  padding: 0;
+}
+
+
+/* Card deck container */
+.card-deck {
+  display: grid;
+  position: relative;
+  width: 90%;
+}
+
+/* CARD DECKS */
+
+/* DECK FRONTS */
+.card-deck-img[stage="1"]  {
+  position: absolute;
+  width: 100%;
+}
+
+.card-deck-img[stage="not selected"]  {
+  position: absolute;
+  width: 100%;
+  opacity: 0;
+}
+
+.card-deck-img[stage="selected"]  {
+  position: absolute;
+  width: 100%;
+  animation: flip-with-rotate 1s forwards;
+}
+
+/* DECK BACKS */
+.card-deck-back-img[stage="1"] {
+  position: absolute;
+  width: 100%;
+  opacity: 0;
+}
+
+.card-deck-back-img[stage="selected"] {
+  position: absolute;
+  width: 100%;
+  opacity: 0;
+  animation: fade-in .5s forwards;
+  animation-delay: .5s;
+}
+
+/* DECK TEXT */
+.card-deck-text[stage="1"] {
+  position: absolute;
+  top: 60%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  opacity: 0;
+  font-size: 40px;
+}
+
+.card-deck-text[stage="selected_pos"] {
+  position: absolute;
+  top: 60%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  opacity: 0;
+  animation: fade-in .5s forwards;
+  animation-delay: .5s;
+  font-size: 40px;
+}
+
+.card-deck-text[stage="selected_neg"] {
+  position: absolute;
+  top: 60%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  opacity: 0;
+  animation: fade-in .5s forwards;
+  animation-delay: .5s;
+  font-size: 40px;
+  color:darkred;
+}
+
+.card-deck-key-text[stage="1"][type="normal"] {
+  position: absolute;
+  top: 170%;
+  left: 48%;
+  font-size: 30px;
+  font-weight: bolder;
+}
+
+.card-deck-key-text[stage="1"][type="pulse"] {
+  position: absolute;
+  top: 170%;
+  left: 48%;
+  font-weight: bolder;
+  animation: pulse 1.5s infinite;
+}
+
+@keyframes pulse {
+  0% { font-size: 35px; }
+  50% { font-size: 45px; }
+  100% { font-size: 35px; } 
+} 
+
+
+.card-deck-key-text[stage="selected"] {
+  position: absolute;
+  top: 170%;
+  left: 48%;
+  opacity: 0;
+  font-size: 30px;
+  font-weight: bolder;
+}
+
+@keyframes flip-with-rotate {
+  0% {
+      transform: perspective(400px) rotateY(0);
+  }
+
+  100% {
+      transform: perspective(400px) rotateY(180deg);
+      opacity: 0;
+  }
+}
+
+@keyframes fade-in {
+  0% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 1;
+}
+}
+
+
+/* fixation */
+.fixation-text {
+  position: absolute;
+  top: 60%;
+  left: 50%;
+  height: 50vh;
+  width: 50vw;
+  max-width:100%;
+  -webkit-transform: translate3d(-50%, -50%, 0);
+  transform: translate3d(-50%, -50%, 0);
+  text-align: center;
+  font-size: 80px;
+}
+
+/* instructions */
+.instructions-text {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  height: 50vh;
+  width: 60vw;
+  max-width: 95%;
+  -webkit-transform: translate3d(-50%, -50%, 0);
+  transform: translate3d(-50%, -50%, 0);
+  text-align: center;
+  font-size: 30px;
+  line-height: 1.5;
+}
+
+.continue-message {
+  position: relative;
+  top: 60%;
+  left: 50%;
+  height: 50vh;
+  width: 50vw;
+  max-width:100%;
+  -webkit-transform: translate3d(-50%, -20%, 0);
+  transform: translate3d(-50%, -20%, 0);
+  text-align: center;
+  font-size: 25px;
+  line-height: 1.5;
+  font-style: italic;
+  color: black;
+}
+
+.continue-message[stage="hidden"] {
+  opacity: 0;
+}
+
+.continue-message[stage="visible"] {
+  animation: fade-in .5s forwards
+}
+
+

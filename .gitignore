@@ -1,0 +1,9 @@
+analysis_code_and_data/.Rproj.user
+analysis_code_and_data/.Rhistory
+analysis_code_and_data/.RData
+analysis_code_and_data/.Ruserdata
+analysis_code_and_data/casino_data_analysis_cache/
+analysis_code_and_data/casino_RL_modeling_cache/
+analysis_code_and_data/casino_RL_recovery_cache/
+analysis_code_and_data/*.Rproj
+analysis_code_and_data/RL_modeling/output/*.mat

@@ -1,0 +1,717 @@
+---
+title: "Casino Task Analyses: RL Modeling Results"
+date: "11/3/2021"
+output: 
+  html_document:
+    df_print: paged
+    theme: flatly
+    toc: yes
+    toc_depth: 4
+    toc_float: yes
+---
+<style type="text/css">
+h1.title {
+font-size: 38px;
+}
+h1 { /* Header 1 */
+font-size: 28px;
+}
+h2 { /* Header 2 */
+font-size: 22px;
+}
+h3 { /* Header 3 */
+font-size: 18px;
+}
+
+</style>
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = F, warning = F, message = F, cache = T)
+knitr::opts_chunk$set(fig.path = "figures/")
+knitr::opts_chunk$set(fig.width=7, fig.height = 4.5, dpi = 600)
+```
+
+```{r load libraries and functions}
+# Load needed libraries
+library(tidyverse)
+library(glue)
+library(magrittr)
+library(afex)
+library(knitr)
+library(kableExtra)
+library(broom)
+
+#define scale function
+scale_this <- function(x){
+  (x - mean(x, na.rm=TRUE)) / sd(x, na.rm=TRUE)
+}
+
+#standard error function
+se <- function(x){
+  sd(x, na.rm = T)/sqrt(length(x))
+}
+```
+
+```{r define plot aesthetics }
+#define colors to use for plots
+color1 = "#FFDD3C"
+color2 = "#378bf1"
+color3 = "grey"
+
+#define plotting theme
+casino.theme <- theme(panel.background = element_rect(fill='transparent'),
+                    axis.line = element_line(color='black'),
+                    panel.grid.minor = element_line(color='transparent'),
+                    axis.title.x = element_text(size=16, vjust=-.25),
+                    axis.title.y = element_text(size=16, vjust=1),
+                    axis.text.x = element_text(size=12, colour="black"),
+                    axis.text.y = element_text(size=12, colour="black"),
+                    legend.text=element_text(size=12),
+                    legend.title = element_text(size = 14),
+                    plot.title = element_text(size=16, face = "bold", hjust = .5), 
+                    strip.text.x = element_text(size=12), 
+                    strip.text.y = element_text(size=12, face="bold"), 
+                    strip.background = element_rect(colour= "black", fill = "transparent"))
+```
+
+```{r read in data}
+#define data directory
+data_dir = "data/task_data/"
+
+#get list of files
+data_files <- list.files(path = data_dir, pattern = "*.csv")
+
+#get list of subject ages
+sub_ages <- read_csv("data/other_data_files/sub_ages.csv")
+
+#initialize data frame
+data <- data.frame()
+
+# Read in data
+for (i in c(1:length(data_files))){
+  sub_data <- read_csv(glue("{data_dir}{data_files[i]}"), show_col_types = F) 
+  
+  #compute the number of browser interactions
+  num_interactions = length(str_split(tail(sub_data,1)$interactions, pattern = "\r\n")[[1]]) - 2
+  sub_data$num_interactions <- num_interactions
+  
+  #compute number of quiz questions answered correctly
+  num_quiz_attempts = nrow(sub_data %>% 
+                             filter(trial_type == "casino-comp_q"))
+  sub_data$quiz_attempts <- num_quiz_attempts
+  
+  #add numeric id to use in matlab later
+  sub_data$matlab_id <- i
+  
+  #combine subject data into larger data frame
+  data <- rbind(data, sub_data)
+}
+
+# read in list of subjects to include
+included_subs <- read_csv("data/other_data_files/sub_ages_inc.csv")
+
+#join with data
+filtered_data <- inner_join(data, included_subs, by = c("sub_id")) 
+
+#re-order age groups
+filtered_data %<>% mutate(age_group = 
+                            factor(age_group, levels = c("Children", "Adolescents", "Adults")))
+```
+
+# Model comparison
+```{r read in BICs}
+BIC_name <- "RL_modeling/output/model_fits/bics.csv"
+BICs <- read_csv(BIC_name)
+
+#add age groups
+matlab_ids <- filtered_data %>%
+  select(matlab_id, sub_id, age, age_group, risk_good_first) %>%
+  unique()
+  
+BICs <- full_join(matlab_ids, BICs, by = c("matlab_id")) %>%
+  drop_na() %>%
+  select(-matlab_id)
+
+#pivot longer
+BIC_long <- BICs %>%
+  pivot_longer(names_to = "model",
+               values_to = "BIC",
+               -c(sub_id, age, age_group, risk_good_first))
+```
+
+```{r mean BICs}
+mean_BIC <- BIC_long %>%
+  group_by(model) %>%
+  summarize(mean_BIC = mean(BIC))
+
+mean_age_group_BIC <- BIC_long %>%
+  group_by(age_group, model) %>%
+  summarize(mean_BIC = mean(BIC))
+```
+
+## Mean BIC values
+```{r mean BIC plot, fig.height = 4, fig.width = 3}
+BIC_overall_plot <- ggplot(mean_BIC, aes(x = model, y = mean_BIC)) +
+  geom_bar(stat = "identity", position = "dodge", color = "black", fill = color2) +
+  geom_text(aes(label=round(mean_BIC, 1)), vjust= -.6, color="black", size=4)+
+  scale_fill_manual(values = c(color1)) + 
+  scale_x_discrete(labels = c("1", "2", "4"), name = "Learning Rates") +
+  coord_cartesian(ylim = c(425, 510)) +
+  ylab("Mean BIC") +
+  casino.theme 
+BIC_overall_plot 
+```
+
+## Mean BIC values across age groups
+```{r BIC age group plot, fig.height = 4, fig.width = 5}
+BIC_age_group_plot <- ggplot(mean_age_group_BIC, aes(x = model, fill = age_group, y = mean_BIC)) +
+  facet_wrap(~age_group) +
+  geom_bar(stat = "identity", position = "dodge", color = "black") +
+  geom_text(aes(label=round(mean_BIC, 1)), vjust= -.6, color="black", size=3)+
+  scale_fill_manual(values = c(color1, color2, color3), name = "Age Group", guide = "none") + 
+  scale_x_discrete(labels = c("1", "2", "4"), name = "Learning Rates") +
+  ylab("Mean BIC") +
+  coord_cartesian(ylim = c(425, 510)) +
+  casino.theme
+BIC_age_group_plot
+```
+
+## Proportion of participants best fit by each model
+```{r BIC proportions, fig.height = 4}
+BICs <- BICs %>%
+  mutate(best_model = 
+           case_when(`1L` < `2L` & `1L` < `4L`   ~ '1LR',
+                     `2L` < `1L` & `2L` < `4L`   ~ '2LR',
+                     `4L` < `1L` & `4L` < `1L`   ~ '4LR'))
+
+BIC_props <- BICs %>%
+  group_by(age_group, best_model) %>%
+  summarise(n = n()) %>%
+  mutate(freq = n/sum(n))
+                                
+BIC_props_plot <- ggplot(BIC_props, aes(best_model, age_group, fill = freq)) +
+  geom_tile(color = "black", aes(size = factor(freq))) +
+  scale_size_manual(values = c(.25, .25, .25, .25, .25, .25, .75, .75, .75), guide = "none") +
+  geom_text(aes(label = round(freq, 2))) +
+  scale_fill_gradient(low = "white", high = color2, "Proportion Best Fit", 
+                      guide = guide_colorbar(label = T, 
+                                       draw.ulim = TRUE, 
+                                       draw.llim = TRUE, 
+                                       frame.colour = "black", 
+                                       ticks = T,
+                                       barheight = 10)) +
+  ylab("") +
+  scale_x_discrete(labels = c("1", "2", "4"), name = "Learning Rates") +
+  casino.theme +
+  theme(axis.line = element_blank()) 
+ BIC_props_plot 
+```
+
+# Parameter estimates from four learning rate model
+```{r read in RL results}
+#read in parameter estimates
+model_params_name <- "RL_modeling/output/model_fits/four_LR_params.csv"
+model_params <- read_csv(model_params_name, 
+                       col_names = c("matlab_id",
+                                     "nll",
+                                     "logpost",
+                                     "AIC",
+                                     "BIC",
+                                     "beta",
+                                     "alpha_pos1",
+                                     "alpha_neg1",
+                                     "alpha_pos2",
+                                     "alpha_neg2")) %>%
+  mutate(asymm_risk_good = (alpha_pos1 - alpha_neg1)/(alpha_pos1 + alpha_neg1),
+         asymm_risk_bad = (alpha_pos2 - alpha_neg2)/(alpha_pos2 + alpha_neg2))
+```
+
+## Asymmetry indices and task performance
+```{r four LR learning rates data processing}
+asymmetry_indices <- model_params %>%
+  select(matlab_id, asymm_risk_good, asymm_risk_bad) %>%
+  pivot_longer(cols = c("asymm_risk_good", "asymm_risk_bad"), 
+               names_to = "block_type",
+               names_prefix = "asymm_",
+               values_to = "AI") %>%
+  mutate(block_type = factor(block_type, labels = c("Risk Bad", "Risk Good")))
+
+#add age groups
+asymmetry_indices <- inner_join(asymmetry_indices, matlab_ids, by = c("matlab_id"))
+
+#add block order and block number
+block_order <- filtered_data %>%
+  select(sub_id, risk_good_first) %>%
+  unique() %>%
+  mutate(block_order = case_when(risk_good_first == "TRUE" ~ "Risk Good First",
+                                 risk_good_first == "FALSE" ~ "Risk Bad First")) %>%
+  select(sub_id, block_order)
+
+#add block order to asymmetry indices
+asymmetry_indices <- inner_join(asymmetry_indices, block_order, by = c("sub_id"))
+```
+
+```{r filtered data processing}
+learning_data <- filtered_data %>%
+      select(c(trial_index,
+           sub_id,
+           matlab_id,
+           age,
+           age_group,
+           risk_good_first,
+           block1_A,
+           block1_B, 
+           block1_C,
+           block1_D,
+           block2_A, 
+           block2_B,
+           block2_C,
+           block2_D,
+           stimulus,
+           task_part,
+           card_choice,
+           rt,
+           choice_position,
+           points_earned,
+           block,
+           num_interactions,
+           quiz_attempts)) %>%
+    filter(task_part == "real_trial") 
+
+#recode points earned, RT, card choices, risk type, and block type
+learning_data %<>% mutate(points_earned = as.numeric(points_earned),
+                         rt = as.numeric(rt),
+                         card_letter = case_when(card_choice == block1_A ~ "A",
+                                         card_choice == block2_A ~ "A",
+                                         card_choice == block1_B ~ "B",
+                                         card_choice == block2_B ~ "B",
+                                         card_choice == block1_C ~ "C",
+                                         card_choice == block2_C ~ "C",
+                                         card_choice == block1_D ~ "D",
+                                         card_choice == block2_D ~ "D"),
+                         card_type = case_when(card_letter == "A" ~ "risky",
+                                       card_letter == "B" ~ "risky",
+                                       card_letter == "C" ~ "safe",
+                                       card_letter == "D" ~ "safe"), 
+                         block_number = as.factor(block),
+                         block_type = case_when(risk_good_first == "TRUE" & block == 1 ~ "Risk Good",
+                                        risk_good_first == "TRUE" & block == 2 ~ "Risk Bad",
+                                        risk_good_first == "FALSE" & block == 1 ~ "Risk Bad",
+                                        risk_good_first == "FALSE" & block == 2 ~ "Risk Good"))
+```
+
+### AI vs. points earned
+```{r total points vs. lr asymmetry}
+#total points vs. lr asymms
+total_points <- learning_data %>%
+  group_by(matlab_id, block_type) %>%
+  summarize(total_points = sum(points_earned, na.rm = T)) 
+
+#merge w/ model fits
+AI_points <- full_join(total_points, 
+                       asymmetry_indices, 
+                       by = c("matlab_id", "block_type"))
+
+#plot
+LR_points_plot <- ggplot(AI_points, aes(x = AI, y = total_points, color = block_type)) +
+  facet_wrap(~block_type) +
+  geom_point() +
+  scale_color_manual(values = c(color1, color2)) +
+  geom_smooth(method = "lm", color = "black", aes(fill = block_type)) +
+  scale_fill_manual(values = c(color1, color2)) +
+  ylab("Points Earned") +
+  xlab("Learning Rate Asymmetry") +
+  casino.theme +
+  theme(legend.position = "none")
+LR_points_plot
+```
+
+### Model: AI vs. points earned
+```{r AI and points earned model, include = F}
+#scale continuous variables
+AI_points$age_scaled = scale_this(AI_points$age)
+AI_points$AI_scaled = scale_this(AI_points$AI)
+
+AI.points.model <- mixed(total_points ~ age_scaled * block_type * AI_scaled + (1|sub_id), 
+                  data = AI_points,
+                  method = "S",
+                  expand_re = T)
+```
+
+```{r display AI points model output}
+nice(AI.points.model)
+```
+
+### AI vs. optimal choices
+```{r AI optimal choice plot}
+prop_opt_choices <- learning_data %>%
+  mutate(opt_choice = case_when(card_type == 'risky' & block_type == "Risk Good" ~ 1,
+                                card_type == 'risky' & block_type == "Risk Bad" ~ 0,
+                                card_type == 'safe' & block_type == "Risk Good" ~ 0,
+                                card_type == 'safe' & block_type == "Risk Bad" ~ 1)) %>%
+  group_by(sub_id, block_type) %>%
+  summarize(prop_opt = mean(opt_choice, na.rm = T))
+
+AI_choices <- full_join(AI_points, 
+                             prop_opt_choices, 
+                             by = c("block_type", "sub_id"))
+
+#plot
+LR_points_plot <- ggplot(AI_choices, aes(x = AI, y = prop_opt, color = block_type)) +
+  geom_point() +
+  facet_wrap(~block_type) +
+  scale_color_manual(values = c(color1, color2)) +
+  geom_smooth(method = "lm", color = "black", aes(fill = block_type)) +
+  scale_fill_manual(values = c(color1, color2)) +
+  ylab("Proportion of Optimal Choices") +
+  xlab("Learning Rate Asymmetry") +
+  casino.theme +
+  theme(legend.position = "none")
+LR_points_plot
+```
+
+### Model: AI vs. optimal choices
+```{r AI and optimal choices earned model, include = F}
+AI.choices.model <- mixed(prop_opt ~ age_scaled * block_type * AI_scaled + (1|sub_id), 
+                  data = AI_choices,
+                  method = "S",
+                  expand_re = T)
+```
+
+```{r display AI choices model output}
+nice(AI.choices.model)
+```
+
+## Asymmetry indices across blocks
+### Model: Asymmetry index by block, block order, and age
+```{r AI by block type block order and age model, include = F}
+#process dat
+asymmetry_indices %<>%
+  mutate(age_scaled = scale_this(age),
+         block_order = factor(block_order),
+         block_number = case_when(
+           block_type == "Risk Bad" & block_order == "Risk Bad First" ~ 1,
+           block_type == "Risk Bad" & block_order == "Risk Good First"  ~ 2,
+           block_type == "Risk Good" & block_order == "Risk Bad First" ~ 2,
+           block_type == "Risk Good" & block_order == "Risk Good First" ~ 1),
+         block_number = factor(block_number))
+
+AI.model <- mixed(AI ~ age_scaled * block_type * block_number + (1|sub_id), 
+                  data = asymmetry_indices,
+                  method = "S",
+                  expand_re = T)
+
+```
+
+```{r display AI model output}
+nice(AI.model)
+```
+
+### Models: AI by block and block order within age groups
+#### Adults
+```{r AI adult model}
+#adults
+adult_AI <- asymmetry_indices %>%
+  filter(age_group == "Adults") 
+
+adult_model <- mixed(AI ~ block_type * block_number + (1|sub_id),
+                     data = adult_AI,
+                     method = "S")
+nice(adult_model)
+```
+
+#### Adolescents
+```{r AI adolescent model}
+#adolescents
+adolescent_AI <- asymmetry_indices %>%
+  filter(age_group == "Adolescents") 
+
+adolescent_model <- mixed(AI ~ block_type * block_number + (1|sub_id),
+                     data = adolescent_AI,
+                     method = "S")
+nice(adolescent_model)
+```
+
+#### Children
+```{r AI child model}
+#children
+child_AI <- asymmetry_indices %>%
+  filter(age_group == "Children") 
+
+child_model <- mixed(AI ~ block_type * block_number + (1|sub_id),
+                     data = child_AI,
+                     method = "S")
+nice(child_model) 
+```
+
+### Asymmetry indices by block type and age group 
+```{r plot asymmetry indices by age group barplot}
+AI_means <- asymmetry_indices %>%
+  group_by(block_type, age_group) %>%
+  summarize(mean_AI = mean(AI),
+            N = n(), 
+            stAI = sd(AI),
+            seAI = stAI/sqrt(N)) %>%
+  drop_na() 
+
+AI_plot <- ggplot(AI_means, aes(x = block_type, y = mean_AI, fill = block_type)) +
+  facet_wrap(~age_group) +
+  geom_bar(stat = "identity", position = "dodge", color = "black") +
+  geom_errorbar(aes(ymin = mean_AI - seAI, ymax = mean_AI + seAI), width = .1, position = position_dodge(width = .9)) +
+  scale_fill_manual(values = c(color1, color2), name = "Block Type") +
+  scale_x_discrete(labels = c("Risk Bad", "Risk Good")) +
+  xlab("Block Type") +
+  ylab("Mean Asymmetry Index") +
+  coord_cartesian(ylim = c(-.25, .75)) +
+  casino.theme +
+  theme(legend.position = "none")
+AI_plot
+```
+
+### Asymmetry indices by block type, block number, and age group
+```{r plot asymmetry indices by age group with block order}
+AI_means <- asymmetry_indices %>%
+  group_by(block_type, age_group, block_order) %>%
+  summarize(mean_AI = mean(AI),
+            N = n(), 
+            stAI = sd(AI),
+            seAI = stAI/sqrt(N)) %>%
+  drop_na() 
+
+AI_plot <- ggplot(AI_means, aes(x = block_type, y = mean_AI, fill = block_type)) +
+  facet_grid(cols = vars(age_group), rows = vars(block_order)) +
+  geom_bar(stat = "identity", position = "dodge", color = "black") +
+  geom_errorbar(aes(ymin = mean_AI - seAI, ymax = mean_AI + seAI), width = .1, position = position_dodge(width = .9)) +
+  scale_fill_manual(values = c(color1, color2), name = "Block Type") +
+  scale_x_discrete(labels = c("Risk Bad", "Risk Good")) +
+  xlab("Block Type") +
+  ylab("Mean Asymmetry Index") +
+  coord_cartesian(ylim = c(-.25, .75)) +
+  casino.theme +
+  theme(legend.position = "none",
+        panel.border = element_rect(fill = NA, size = .5),
+        panel.background = element_blank(),
+        axis.line = element_blank()) 
+AI_plot
+```
+
+### Asymmetry indices individual data points
+```{r plot asymmetry indices individual points, fig.width = 6, fig.height = 5}
+AI_means <- asymmetry_indices %>%
+  group_by(block_type, age_group) %>%
+  summarize(mean_AI = mean(AI),
+            N = n(), 
+            stAI = sd(AI),
+            seAI = stAI/sqrt(N)) %>%
+  drop_na() 
+
+AI_indiv_plot <- ggplot(asymmetry_indices, aes(x = block_type, y = AI, fill = block_type, color = block_type)) +
+  facet_wrap(~age_group) +
+  geom_line(aes(group = sub_id), color = 'black', size = .1) +
+    geom_point(alpha = .5) +
+  geom_line(data = AI_means, aes(x = block_type, y = mean_AI, group = age_group), color = "black", size = 1) +
+    geom_point(data = AI_means, aes(x = block_type, y = mean_AI), size = 3, alpha = 1) +
+  scale_color_manual(values = c(color1, color2), name = "Block Type") +
+  scale_x_discrete(labels = c("Risk Bad", "Risk Good")) +
+  xlab("Block Type") +
+  ylab("Learning Rate Asymmetry") +
+  casino.theme +
+  theme(legend.position = "none")
+AI_indiv_plot
+```
+
+## Learning rates
+### Model: Negative learning rates by block, block order, and age
+```{r process learing rates data}
+#add sub IDs to model params
+model_params <- inner_join(model_params, matlab_ids, by = c("matlab_id"))
+
+#pivot longer
+learning_rates <- model_params %>%
+  select(sub_id, age, age_group, c(alpha_pos1:alpha_neg2)) %>%
+  pivot_longer(cols = c(alpha_pos1:alpha_neg2), 
+               values_to = "estimate",
+               names_to = "LR") %>%
+  mutate(block_type = case_when(LR == "alpha_pos1" ~ "Risk Good",
+                           LR == "alpha_neg1" ~ "Risk Good",
+                           LR == "alpha_pos2" ~ "Risk Bad",
+                           LR == "alpha_neg2" ~ "Risk Bad"),
+         valence = case_when(LR == "alpha_pos1" ~ "pos",
+                           LR == "alpha_neg1" ~ "neg",
+                           LR == "alpha_pos2" ~ "pos",
+                           LR == "alpha_neg2" ~ "neg"))
+
+#add block order
+learning_rates <- inner_join(block_order, 
+                             learning_rates, 
+                             by = c("sub_id")) 
+
+#process data for modeling
+learning_rates %<>%
+  mutate(age_scaled = scale_this(age),
+         block = factor(block_type),
+         valence = factor(valence),
+         block_order = factor(block_order),
+         block_number = case_when(block_order == "Risk Good First" & block_type == "Risk Good" ~ 1,
+                                  block_order == "Risk Good First" & block_type == "Risk Bad" ~ 2,
+                                  block_order == "Risk Bad First" & block_type == "Risk Good" ~ 2,
+                                  block_order == "Risk Bad First" & block_type == "Risk Bad" ~ 1),
+         block_number = factor(block_number))
+```
+
+```{r negative LR model, include = F}
+neg.LR.model <- mixed(estimate ~ age_scaled * block_type * block_number  + (1|sub_id), 
+                  data = learning_rates %>% filter(valence == "neg"),
+                  method = "S", 
+                  expand_re = T)
+```
+
+```{r show results from negative LR model}
+nice(neg.LR.model)
+```
+
+```{r positive learning rates model, include = F}
+pos.LR.model <- mixed(estimate ~ age_scaled * block_type * block_number  + (1|sub_id), 
+                  data = learning_rates %>% filter(valence == "pos"),
+                  method = "S", 
+                  expand_re = T)
+```
+
+```{r show results from pos LR model}
+nice(pos.LR.model)
+```
+
+
+```{r plot learning rates, fig.width = 7, fig.height = 5}
+learning_rate_means <- learning_rates %>%
+  group_by(age_group, valence,  block_type, block_number) %>%
+  summarize(mean_est = mean(estimate, na.rm = T),
+            se_est = se(estimate))
+
+learning_rate_means$valence <- factor(learning_rate_means$valence, 
+                                           labels = c("Negative Learning Rates", 
+                                                      "Positive Learning Rates"))
+
+learning_rate_plot <- ggplot(learning_rate_means, aes(x = block_number, y = mean_est, fill = block_type)) +
+  facet_grid(cols = vars(age_group), rows = vars(valence))  +
+  geom_bar(stat = "identity", position = "dodge", color = 'black') +
+  geom_errorbar(aes(ymin = mean_est - se_est, ymax = mean_est + se_est), position = position_dodge(width = .9), width = .1) +
+  scale_fill_manual(values = c(color1, color2), name = "Block Type") +
+  ylab("Mean Parameter Estimate") +
+  xlab("Block Number") +
+  casino.theme +
+    theme(panel.border = element_rect(fill = NA, size = .5),
+    panel.background = element_blank(),
+    axis.line = element_blank()) 
+learning_rate_plot
+```
+
+
+## Relations between AI and measures of 'real-world' behavior
+```{r survey data processing}
+kid_surveys <- read_csv("data/surveys/child_survey_data_sept.csv")
+adolescent_surveys <- read_csv("data/surveys/adolescents_survey_data_sept.csv")
+adult_surveys <- read_csv("data/surveys/adult_survey_data_sept.csv")
+
+#exclude participants who did not respond correctly to attention checks
+survey_data <- rbind(kid_surveys, adolescent_surveys, adult_surveys) %>%
+  filter(attention_prop == 1)
+
+#join with AI data
+AI_survey <- inner_join(asymmetry_indices, survey_data, by = c("sub_id")) 
+
+#count number of subjects
+AI_survey_subs <- AI_survey %>% 
+  select(sub_id, age_group) %>%
+  unique() %>%
+  group_by(age_group) %>%
+  summarize(n = n())
+
+#display
+kable(AI_survey_subs, col.names = c("Age Group", "N")) %>%
+  kable_classic(full_width = F, html_font = "Arial") %>%
+  kable_styling("striped")
+
+
+#process data for models
+AI_survey_data <- AI_survey %>%
+  select(sub_id, age, age_group, AI, CDI_prop, likelihood_prop, Financial_likelihood_prop) %>%
+  mutate(age_scaled = scale_this(age),
+                      AI_scaled = scale_this(AI),
+                      CDI_scaled = scale_this(CDI_prop),
+                      overall_lik_scaled = scale_this(likelihood_prop),
+                      financial_lik_scaled = scale_this(Financial_likelihood_prop)) 
+```
+
+  
+## Model: AI and depressive symptomatology
+```{r AI CDI relation}
+AI.CDI.model <- lm(CDI_scaled ~ age_scaled * AI_scaled,
+                  data = AI_survey_data)
+
+AI.CDI.model %>% 
+  tidy() %>%
+  kable()%>%
+  kable_classic(full_width = F, html_font = "Arial") %>%
+  kable_styling("striped")
+```
+
+## Model: AI and overall risk-taking
+```{r AI risk-taking relation}
+AI.risk.model <- lm(overall_lik_scaled ~ age_scaled * AI_scaled, 
+                  data = AI_survey_data)
+
+AI.risk.model %>%
+  tidy() %>%
+  kable()%>%
+  kable_classic(full_width = F, html_font = "Arial") %>%
+  kable_styling("striped")
+```
+  
+## Model: AI and financial risk-taking
+```{r AI financial risk-taking relation}
+AI.f_risk.model <- lm(financial_lik_scaled ~ age_scaled * AI_scaled, 
+                  data = AI_survey_data)
+
+AI.f_risk.model %>%
+  tidy() %>%
+  kable()%>%
+  kable_classic(full_width = F, html_font = "Arial") %>%
+  kable_styling("striped")
+```
+
+  
+## Inverse temperatures
+## Beta across age
+```{r other params and age plots, fig.height = 5, fig.width = 10}
+#Plot other parameters vs. age
+betas <- model_params %>%
+  select(sub_id, age, age_group,  beta)
+
+#beta vs. age
+beta_plot <- ggplot(betas, aes(x = age, y = beta))  +
+  geom_point(size = 1, color = color2) +
+  geom_smooth(method = "lm", color = color1, fill = color1) +
+  xlab("Age") +
+  ylab("Beta") +
+  casino.theme
+beta_plot
+```
+
+## Model: Beta vs. age
+```{r other params and age models}
+
+betas %<>% mutate(
+  age_scaled = scale_this(age),
+  beta_scaled = scale_this(beta))
+
+#Beta vs. age
+beta.model <- lm(beta_scaled ~ age_scaled, data = betas)
+  
+beta.model %>%
+  tidy() %>%
+  kable()%>%
+  kable_classic(full_width = F, html_font = "Arial") %>%
+  kable_styling("striped")
+```
