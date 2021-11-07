@@ -68,17 +68,7 @@ if (priors)
 lik= lik+log(pdf('beta', alpha_pos, 1.1,1.1));
 lik= lik+log(pdf('beta', alpha_neg, 1.1,1.1));
 lik= lik+log(pdf('gam', beta, 1.2, 5));
-%lik= lik+lognpdf(key_c, 0, 3);
 end
-
-%empirical priors from Gershman 2016
-% lik= lik+log(pdf('beta', alpha_pos1, .01, .032));
-% lik= lik+log(pdf('beta', alpha_neg1, .012, .021));
-% lik= lik+log(pdf('beta', alpha_pos2, .01, .032));
-% lik= lik+log(pdf('beta', alpha_neg2, .012, .021));
-% lik= lik+lognpdf(key_c, .15, 1.42);
-% lik= lik+lognpdf(choice_c, .15, 1.42);
-% lik= lik+log(pdf('gam', beta, 4.82, 0.88));
 
 
 %flip sign of loglikelihood (which is negative, and we want it to be as close to 0 as possible) so we can enter it into fmincon, which searches for minimum, rather than maximum values

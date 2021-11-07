@@ -427,11 +427,12 @@ optimal_choice_plot <- ggplot(optimal_choice_means,
   coord_cartesian(ylim = c(.3, .8)) +
   geom_point(size = 2) +
   geom_errorbar(data = optimal_choice_means %>% filter(model == "participants"), aes(ymin = mean_opt_choice - se_opt_choice, ymax = mean_opt_choice + se_opt_choice), width = .1, linetype = 1) +
-  scale_color_manual(values = c(color1, color2), name = "Block Type") +
+  scale_color_manual(values = c(color1, color2), name = "") +
   scale_linetype_manual(values = c(1, 2), name = "") +
   scale_shape_manual(values = c(17, 20), name = "") +
   geom_hline(yintercept = .5, color = "grey", linetype = "dashed") +
   xlab("Trial Group (10 trials)") +
+  scale_x_continuous(breaks = c(2, 4, 6, 8, 10)) +
   ylab("Proportion of Optimal Choices") +
   casino.theme +
   theme(legend.position = "top") +

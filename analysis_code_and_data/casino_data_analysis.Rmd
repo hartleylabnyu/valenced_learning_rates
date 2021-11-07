@@ -291,7 +291,7 @@ We excluded `r children_excluded` children, `r adolescents_excluded` adolescents
 ```{r plot ages}
 #get the age distribution for included participants
 sub_ages <- filtered_data %>%
-  select(sub_id, age, gender, age_group) %>%
+  select(matlab_id, sub_id, age, gender, age_group) %>%
   unique()
 
 #write csv of included participants

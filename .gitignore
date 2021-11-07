@@ -7,3 +7,4 @@ analysis_code_and_data/casino_RL_modeling_cache/
 analysis_code_and_data/casino_RL_recovery_cache/
 analysis_code_and_data/*.Rproj
 analysis_code_and_data/RL_modeling/output/*.mat
+.Rproj.user

@@ -64,7 +64,6 @@ end
 if (priors)
 lik= lik+log(pdf('beta', alpha, 1.1,1.1));
 lik= lik+log(pdf('gam', beta, 1.2, 5));
-%lik= lik+lognpdf(key_c, 0, 3);
 end
 
 

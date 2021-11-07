@@ -8,7 +8,7 @@ clear;
 addpath('likelihood_functions/');
 
 % load data
-data = readtable('data/matlab_choice_data.csv');
+data = readtable('../data/other_data_files/matlab_choice_data.csv');
 
 %determine the number of subjects
 sub_list = unique(data.matlab_id);

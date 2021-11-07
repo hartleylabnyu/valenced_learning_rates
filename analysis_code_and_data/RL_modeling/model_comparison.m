@@ -15,7 +15,7 @@ load('output/model_fits/choice_data_fits');
 num_models = length(model_fits);
 
 % load data
-data = readtable('data/matlab_choice_data.csv');
+data = readtable('../data/other_data_files/matlab_choice_data.csv');
 
 %get list of subjects
 matlab_id = unique(data.matlab_id);

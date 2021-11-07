@@ -101,9 +101,6 @@ for (i in c(1:length(data_files))){
                              filter(trial_type == "casino-comp_q"))
   sub_data$quiz_attempts <- num_quiz_attempts
   
-  #add numeric id to use in matlab later
-  sub_data$matlab_id <- i
-  
   #combine subject data into larger data frame
   data <- rbind(data, sub_data)
 }
@@ -121,7 +118,7 @@ filtered_data %<>% mutate(age_group =
 
 # Model comparison
 ```{r read in BICs}
-BIC_name <- "RL_modeling/output/model_fits/bics.csv"
+BIC_name <- "RL_modeling/output/bics.csv"
 BICs <- read_csv(BIC_name)
 
 #add age groups
@@ -211,7 +208,7 @@ BIC_props_plot <- ggplot(BIC_props, aes(best_model, age_group, fill = freq)) +
 # Parameter estimates from four learning rate model
 ```{r read in RL results}
 #read in parameter estimates
-model_params_name <- "RL_modeling/output/model_fits/four_LR_params.csv"
+model_params_name <- "RL_modeling/output/model_fits/four_LR.csv"
 model_params <- read_csv(model_params_name, 
                        col_names = c("matlab_id",
                                      "nll",
@@ -616,6 +613,7 @@ adult_surveys <- read_csv("data/surveys/adult_survey_data_sept.csv")
 
 #exclude participants who did not respond correctly to attention checks
 survey_data <- rbind(kid_surveys, adolescent_surveys, adult_surveys) %>%
+  filter(sub_id %in% matlab_ids$sub_id) %>%
   filter(attention_prop == 1)
 
 #join with AI data
@@ -701,7 +699,6 @@ beta_plot
 
 ## Model: Beta vs. age
 ```{r other params and age models}
-
 betas %<>% mutate(
   age_scaled = scale_this(age),
   beta_scaled = scale_this(beta))
