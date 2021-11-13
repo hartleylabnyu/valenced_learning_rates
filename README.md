@@ -1,4 +1,4 @@
-# Flexibility in valenced learning rates across development
+# Valence biases in reinforcement learning adapt to environmental structure across age
 Tasks, data, and analysis code for: *Flexibility in valenced learning rates across development*
 
 We collected data from 154 participants on two tasks: a novel reinforcement learning task
