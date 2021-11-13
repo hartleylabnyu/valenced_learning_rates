@@ -5,7 +5,7 @@ rng shuffle;
 %% Variables to modify
 
 %determine models to simulate
-models = {'one_LR', 'two_LR', 'four_LR'};
+models = {'four_LR'};
 
 % Data name
 save_filename = '../output/sim_LR_data_realParams';

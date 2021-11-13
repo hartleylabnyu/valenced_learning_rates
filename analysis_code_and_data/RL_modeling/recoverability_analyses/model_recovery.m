@@ -56,5 +56,5 @@ set(gca,'FontSize',14)
 colorbar off
 
 %% export bics
-writetable(bic_table_stacked, '../output/BIC_recovery.csv');
-
+writetable(bic_table_stacked, '../output/bic_recovery.csv');
+writetable(aic_table_stacked, '../output/aic_recovery.csv');

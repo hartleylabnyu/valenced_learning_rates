@@ -117,77 +117,77 @@ filtered_data %<>% mutate(age_group =
 ```
 
 # Model comparison
-```{r read in BICs}
-BIC_name <- "RL_modeling/output/bics.csv"
-BICs <- read_csv(BIC_name)
+```{r read in aics}
+aic_name <- "RL_modeling/output/aics.csv"
+aics <- read_csv(aic_name)
 
 #add age groups
 matlab_ids <- filtered_data %>%
   select(matlab_id, sub_id, age, age_group, risk_good_first) %>%
   unique()
   
-BICs <- full_join(matlab_ids, BICs, by = c("matlab_id")) %>%
+aics <- full_join(matlab_ids, aics, by = c("matlab_id")) %>%
   drop_na() %>%
   select(-matlab_id)
 
 #pivot longer
-BIC_long <- BICs %>%
+aic_long <- aics %>%
   pivot_longer(names_to = "model",
-               values_to = "BIC",
+               values_to = "aic",
                -c(sub_id, age, age_group, risk_good_first))
 ```
 
-```{r mean BICs}
-mean_BIC <- BIC_long %>%
+```{r mean aics}
+mean_aic <- aic_long %>%
   group_by(model) %>%
-  summarize(mean_BIC = mean(BIC))
+  summarize(mean_aic = mean(aic))
 
-mean_age_group_BIC <- BIC_long %>%
+mean_age_group_aic <- aic_long %>%
   group_by(age_group, model) %>%
-  summarize(mean_BIC = mean(BIC))
+  summarize(mean_aic = mean(aic))
 ```
 
-## Mean BIC values
-```{r mean BIC plot, fig.height = 4, fig.width = 3}
-BIC_overall_plot <- ggplot(mean_BIC, aes(x = model, y = mean_BIC)) +
+## Mean aic values
+```{r mean aic plot, fig.height = 4, fig.width = 3}
+aic_overall_plot <- ggplot(mean_aic, aes(x = model, y = mean_aic)) +
   geom_bar(stat = "identity", position = "dodge", color = "black", fill = color2) +
-  geom_text(aes(label=round(mean_BIC, 1)), vjust= -.6, color="black", size=4)+
+  geom_text(aes(label=round(mean_aic, 1)), vjust= -.6, color="black", size=4)+
   scale_fill_manual(values = c(color1)) + 
   scale_x_discrete(labels = c("1", "2", "4"), name = "Learning Rates") +
   coord_cartesian(ylim = c(425, 510)) +
-  ylab("Mean BIC") +
+  ylab("Mean AIC") +
   casino.theme 
-BIC_overall_plot 
+aic_overall_plot 
 ```
 
-## Mean BIC values across age groups
-```{r BIC age group plot, fig.height = 4, fig.width = 5}
-BIC_age_group_plot <- ggplot(mean_age_group_BIC, aes(x = model, fill = age_group, y = mean_BIC)) +
+## Mean aic values across age groups
+```{r aic age group plot, fig.height = 4, fig.width = 5}
+aic_age_group_plot <- ggplot(mean_age_group_aic, aes(x = model, fill = age_group, y = mean_aic)) +
   facet_wrap(~age_group) +
   geom_bar(stat = "identity", position = "dodge", color = "black") +
-  geom_text(aes(label=round(mean_BIC, 1)), vjust= -.6, color="black", size=3)+
+  geom_text(aes(label=round(mean_aic, 1)), vjust= -.6, color="black", size=3)+
   scale_fill_manual(values = c(color1, color2, color3), name = "Age Group", guide = "none") + 
   scale_x_discrete(labels = c("1", "2", "4"), name = "Learning Rates") +
-  ylab("Mean BIC") +
+  ylab("Mean AIC") +
   coord_cartesian(ylim = c(425, 510)) +
   casino.theme
-BIC_age_group_plot
+aic_age_group_plot
 ```
 
 ## Proportion of participants best fit by each model
-```{r BIC proportions, fig.height = 4}
-BICs <- BICs %>%
+```{r aic proportions, fig.height = 4}
+aics <- aics %>%
   mutate(best_model = 
            case_when(`1L` < `2L` & `1L` < `4L`   ~ '1LR',
                      `2L` < `1L` & `2L` < `4L`   ~ '2LR',
                      `4L` < `1L` & `4L` < `1L`   ~ '4LR'))
 
-BIC_props <- BICs %>%
+aic_props <- aics %>%
   group_by(age_group, best_model) %>%
   summarise(n = n()) %>%
   mutate(freq = n/sum(n))
                                 
-BIC_props_plot <- ggplot(BIC_props, aes(best_model, age_group, fill = freq)) +
+aic_props_plot <- ggplot(aic_props, aes(best_model, age_group, fill = freq)) +
   geom_tile(color = "black", aes(size = factor(freq))) +
   scale_size_manual(values = c(.25, .25, .25, .25, .25, .25, .75, .75, .75), guide = "none") +
   geom_text(aes(label = round(freq, 2))) +
@@ -202,7 +202,7 @@ BIC_props_plot <- ggplot(BIC_props, aes(best_model, age_group, fill = freq)) +
   scale_x_discrete(labels = c("1", "2", "4"), name = "Learning Rates") +
   casino.theme +
   theme(axis.line = element_blank()) 
- BIC_props_plot 
+ aic_props_plot 
 ```
 
 # Parameter estimates from four learning rate model
@@ -213,8 +213,8 @@ model_params <- read_csv(model_params_name,
                        col_names = c("matlab_id",
                                      "nll",
                                      "logpost",
-                                     "AIC",
-                                     "BIC",
+                                     "bic",
+                                     "aic",
                                      "beta",
                                      "alpha_pos1",
                                      "alpha_neg1",
@@ -616,8 +616,13 @@ survey_data <- rbind(kid_surveys, adolescent_surveys, adult_surveys) %>%
   filter(sub_id %in% matlab_ids$sub_id) %>%
   filter(attention_prop == 1)
 
+#compute mean AI for each subject
+mean_AI <- asymmetry_indices %>%
+  group_by(sub_id, age, age_group) %>%
+  summarize(meanAI = mean(AI))
+
 #join with AI data
-AI_survey <- inner_join(asymmetry_indices, survey_data, by = c("sub_id")) 
+AI_survey <- inner_join(mean_AI, survey_data, by = c("sub_id")) 
 
 #count number of subjects
 AI_survey_subs <- AI_survey %>% 
@@ -634,12 +639,13 @@ kable(AI_survey_subs, col.names = c("Age Group", "N")) %>%
 
 #process data for models
 AI_survey_data <- AI_survey %>%
-  select(sub_id, age, age_group, AI, CDI_prop, likelihood_prop, Financial_likelihood_prop) %>%
-  mutate(age_scaled = scale_this(age),
-                      AI_scaled = scale_this(AI),
-                      CDI_scaled = scale_this(CDI_prop),
-                      overall_lik_scaled = scale_this(likelihood_prop),
-                      financial_lik_scaled = scale_this(Financial_likelihood_prop)) 
+  select(sub_id, age, age_group, meanAI, CDI_prop, likelihood_prop, Financial_likelihood_prop)
+
+AI_survey_data$age_scaled = scale_this(AI_survey_data$age)
+AI_survey_data$AI_scaled = scale_this(AI_survey_data$meanAI)
+AI_survey_data$CDI_scaled = scale_this(AI_survey_data$CDI_prop)
+AI_survey_data$overall_lik_scaled = scale_this(AI_survey_data$likelihood_prop)
+AI_survey_data$financial_lik_scaled = scale_this(AI_survey_data$Financial_likelihood_prop)
 ```
 
   

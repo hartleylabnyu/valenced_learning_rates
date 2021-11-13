@@ -49,17 +49,15 @@ se <- function(x){
 #define directory name
 modeling_dir <- 'RL_modeling/output'
 
-#bic values for each dataset & model
-bic_recov_name <- glue("{modeling_dir}/bic_recovery.csv")
+#aic values for each dataset & model
+aic_recov_name <- glue("{modeling_dir}/aic_recovery.csv")
 
 #simulated and recovered parameter values from four LR model
 sim_params_name <- glue("{modeling_dir}/fourLR_sim_params.csv")
 fit_params_name <- glue("{modeling_dir}/fourLR_fit_params.csv")
 
 #proportion of optimal choices from model simulations
-oneLR_choices_name <- glue("{modeling_dir}/one_LR_mean_opt_choices_sim.csv") 
-twoLR_choices_name <- glue("{modeling_dir}/two_LR_mean_opt_choices_sim.csv") 
-fourLR_choices_name <- glue("{modeling_dir}/four_LR_mean_opt_choices_sim.csv") 
+fourLR_choices_name <- glue("{modeling_dir}/four_LR_opt_choices_sim.csv") 
 ```
 
 ```{r define plot aesthetics }
@@ -177,18 +175,18 @@ alpha_neg_risk_bad_plot
 
 # Model recovery
 ```{r read in model recovery results}
-bic_recov <- read_csv(bic_recov_name, skip = 1, col_names = c('sim', 'fit'))
+aic_recov <- read_csv(aic_recov_name, skip = 1, col_names = c('sim', 'fit'))
 ```
 
 ```{r recovery plot, fig.height = 4.5, fig.width = 5}
-BIC_props <- bic_recov %>%
+aic_props <- aic_recov %>%
   mutate(sim = factor(sim, levels = c("one_LR", "two_LR", "four_LR")),
          fit = factor(fit, levels = c(3, 2, 1))) %>%
   group_by(sim, fit, .drop = F) %>%
   summarise(n = n(), .drop = F) %>%
   mutate(freq = n/sum(n), .drop = F)
                                 
-BIC_props_plot <- ggplot(BIC_props, aes(sim, fit, fill = freq)) +
+aic_props_plot <- ggplot(aic_props, aes(sim, fit, fill = freq)) +
   geom_tile(color = "black", aes(size = factor(freq))) +
   scale_size_manual(values = c(.25, .25, .25, .25, .25, .25, .75, .75, .75), guide = "none") +
   geom_text(aes(label = round(freq, 2))) +
@@ -197,42 +195,10 @@ BIC_props_plot <- ggplot(BIC_props, aes(sim, fit, fill = freq)) +
   scale_x_discrete(labels = c("1 LR", "2 LR", "4 LR"), name = "Simulated Model") +
   scale_y_discrete(labels = c("4 LR", "2 LR", "1 LR"), name = "Recovered Model") +
   casino.theme
- BIC_props_plot 
+ aic_props_plot 
 ```
 
 # Simulated vs. real data
-```{r import simulated data}
-sim_oneLR <- read_csv(oneLR_choices_name) %>%
-  mutate(trial = 1:n(), 
-         model = "1LR") %>%
-  pivot_longer(cols = 1:6,  names_to = "group", values_to = "prop_opt") %>%
-  separate(col = "group", sep = "_", into = c("age_group", "block_order")) 
-
-sim_twoLR <- read_csv(twoLR_choices_name) %>%
-  mutate(trial = 1:n(),
-         model = "2LR") %>%
-  pivot_longer(cols = 1:6,  names_to = "group", values_to = "prop_opt") %>%
-  separate(col = "group", sep = "_", into = c("age_group", "block_order"))
-
-sim_fourLR <- read_csv(fourLR_choices_name) %>%
-  mutate(trial = 1:n(),
-         model = "4LR") %>%
-  pivot_longer(cols = 1:6,  names_to = "group", values_to = "prop_opt") %>%
-  separate(col = "group", sep = "_", into = c("age_group", "block_order"))
-
-sim_data <- rbind(sim_oneLR, sim_twoLR, sim_fourLR) %>%
-  mutate(block_order = case_when(block_order == 1 ~ "Risk Good First",
-                                 block_order == 2 ~ "Risk Bad First"),
-         block_type = case_when(as.numeric(trial) < 101 & block_order == "Risk Good First" ~ "Risk Good",
-                                as.numeric(trial) > 100 & block_order == "Risk Good First" ~ "Risk Bad",
-                                as.numeric(trial) < 101 & block_order == "Risk Bad First" ~ "Risk Bad",
-                                as.numeric(trial) > 100 & block_order == "Risk Bad First" ~ "Risk Good"),
-         trial_num = case_when(as.numeric(trial) < 101 ~ as.numeric(trial),
-                               as.numeric(trial) > 100 ~ (as.numeric(trial) - 100)),
-         age_group = factor(age_group, levels = c("Children", "Adolescents", "Adults")))
-```
-
-
 ```{r read in data}
 #define data directory
 data_dir = "data/task_data/"
@@ -258,9 +224,6 @@ for (i in c(1:length(data_files))){
   num_quiz_attempts = nrow(sub_data %>% 
                              filter(trial_type == "casino-comp_q"))
   sub_data$quiz_attempts <- num_quiz_attempts
-  
-  #add numeric id to use in matlab later
-  sub_data$matlab_id <- i
   
   #combine subject data into larger data frame
   data <- rbind(data, sub_data)
@@ -337,102 +300,74 @@ optimal_choices <- learning_data %>%
 # determine each participant's proportion of optimal choices within each trial group
 sub_optimal_choices <- optimal_choices %>%
   group_by(sub_id, block_type, block_order) %>%
-  mutate(trial = rank(trial_index)) %>%
-  ungroup() %>%
-  group_by(trial, block_type, age_group, block_order) %>%
-  summarize(prop_optimal = mean(optimal_choice, na.rm = T)) %>%
-  mutate(data_type = "participants") %>%
-  ungroup() %>%
-  select(model = data_type, age_group, block_order, prop_opt = prop_optimal, block_type, trial_num = trial)
+  mutate(trial = rank(trial_index),
+         data_type = "participants") %>%
+  select(matlab_id, age, age_group, optimal_choice, block_order, block_type, trial, model = data_type)
 ```
 
-```{r combine real data and simulated 4LR}
-fourLR_choices <- sim_data %>%
-  select(-trial)
+```{r import simulated data}
+sim_fourLR <- read_csv(fourLR_choices_name) %>%
+  mutate(model = "4LR") 
 
-combined_data <- rbind(fourLR_choices, sub_optimal_choices)
+#get block information
+sub_info <- sub_optimal_choices %>%
+  ungroup() %>%
+  select(sub_id, matlab_id, age, age_group, block_order) %>%
+  unique()
+
+#combine
+sim_data <- full_join(sim_fourLR, sub_info, by = c('matlab_id')) %>%
+  mutate(trial_num = case_when(trial < 101 ~ trial,
+                               trial > 100 ~ trial - 100),
+         block_type = case_when(block_order == "Risk Bad First" & trial < 101 ~ "Risk Bad",
+                                block_order == "Risk Bad First" & trial > 100 ~ "Risk Good",
+                                block_order == "Risk Good First" & trial < 101 ~ "Risk Good",
+                                block_order == "Risk Good First" & trial > 100 ~ "Risk Bad")) %>%
+  select(sub_id, matlab_id, age, age_group, optimal_choice = mean_opt_choice, block_order, block_type, trial = trial_num, model)
+
+#combine with sub data
+combined_data <- rbind(sim_data, sub_optimal_choices)
 ```
 
-```{r plot simulated and real data, fig.width = 6}
+
+```{r plot simulated and real data, fig.width = 6.5}
 #compute means per trial group
 optimal_choice_means <- combined_data %>%
-  mutate(trial_group = ceiling(trial_num/20)) %>%
-  group_by(trial_group, block_type, age_group, model, block_order) %>%
-  summarize(mean_opt_choice = mean(prop_opt)) %>%
-  mutate(model = factor(model))
-  
-#plot optimal choices over time
-optimal_choice_plot_1 <- ggplot(optimal_choice_means %>% filter(block_order == "Risk Good First"), 
-                              aes(x = trial_group,
-                                  y = mean_opt_choice, 
-                                  color = model,
-                                  linetype = model)) +
-  facet_grid(cols = vars(age_group), rows = vars(block_type)) +
-  geom_line(aes(group = model), size = .75) +
-  geom_point() +
-  scale_color_manual(values = c("darkorange", "darkred", "darkblue", "black"), name = "") +
-  scale_linetype_manual(values = c(2, 3, 5, 1), name = "") +
-  geom_hline(yintercept = .5, color = "grey", linetype = "dashed") +
-  xlab("Trial Group (20 trials)") +
-  ylab("Proportion of Optimal Choices") +
-  casino.theme +
-  theme(legend.position = "top") +
-  ggtitle("Risk Good First") +
-        theme(panel.border = element_rect(fill = NA, size = .5),
-    panel.background = element_blank(),
-    axis.line = element_blank()) 
-optimal_choice_plot_1
-
-optimal_choice_plot_2 <- ggplot(optimal_choice_means %>% filter(block_order == "Risk Bad First"), 
-                              aes(x = trial_group,
-                                  y = mean_opt_choice, 
-                                  color = model,
-                                  linetype = model)) +
-  facet_grid(cols = vars(age_group), rows = vars(block_type)) +
-  geom_line(aes(group = model), size = .75) +
-  geom_point() +
-  scale_color_manual(values = c("darkorange", "darkred", "darkblue", "black"), name = "") +
-  scale_linetype_manual(values = c(2, 3, 5, 1), name = "") +
-  geom_hline(yintercept = .5, color = "grey", linetype = "dashed") +
-  xlab("Trial Group (20 trials)") +
-  ylab("Proportion of Optimal Choices") +
-  casino.theme +
-  theme(legend.position = "top") +
-  ggtitle("Risk Bad First") +
-        theme(panel.border = element_rect(fill = NA, size = .5),
-    panel.background = element_blank(),
-    axis.line = element_blank()) 
-optimal_choice_plot_2
-```
-
-```{r plot simulated and real data collapsed across block order, fig.width = 6}
-#compute means per trial group
-optimal_choice_means <- combined_data %>%
-  mutate(trial_group = ceiling(trial_num/10)) %>%
+  mutate(trial_group = ceiling(trial/5)) %>%
   group_by(trial_group, block_type, age_group, model) %>%
-  summarize(mean_opt_choice = mean(prop_opt),
-            se_opt_choice = se(prop_opt)) %>%
-  mutate(model = factor(model)) %>%
-  filter(model %in% c("participants", "4LR"))
-  
+  summarize(mean_opt_choice = mean(optimal_choice, na.rm = T),
+            se_opt_choice = se(optimal_choice)) %>%
+  mutate(model = factor(model))
+
+optimal_choice_sub_means <- combined_data %>%
+  mutate(trial_group = ceiling(trial/5)) %>%
+  group_by(sub_id, trial_group, block_type, age_group, model) %>%
+  summarize(opt_choice = mean(optimal_choice, na.rm = T)) %>%
+  mutate(model = factor(model))
+
+optimal_choice_group_means <- optimal_choice_sub_means %>%
+  group_by(trial_group, block_type, age_group, model) %>%
+  summarize(mean_opt_choice = mean(opt_choice),
+            se_opt_choice = se(opt_choice)) 
+
 #plot optimal choices over time
-optimal_choice_plot <- ggplot(optimal_choice_means, 
+optimal_choice_plot <- ggplot(optimal_choice_group_means, 
                               aes(x = trial_group,
                                   y = mean_opt_choice, 
                                   color = block_type,
                                   linetype = model,
                                   shape = model)) +
   facet_grid(cols = vars(age_group)) +
-  geom_line(size = .75) +
+  geom_line(size = 1) +
   coord_cartesian(ylim = c(.3, .8)) +
   geom_point(size = 2) +
-  geom_errorbar(data = optimal_choice_means %>% filter(model == "participants"), aes(ymin = mean_opt_choice - se_opt_choice, ymax = mean_opt_choice + se_opt_choice), width = .1, linetype = 1) +
+  geom_errorbar(data = optimal_choice_group_means %>% filter(model == "participants"), aes(ymin = mean_opt_choice - se_opt_choice, ymax = mean_opt_choice + se_opt_choice), width = .1, linetype = 1) +
   scale_color_manual(values = c(color1, color2), name = "") +
   scale_linetype_manual(values = c(1, 2), name = "") +
   scale_shape_manual(values = c(17, 20), name = "") +
   geom_hline(yintercept = .5, color = "grey", linetype = "dashed") +
-  xlab("Trial Group (10 trials)") +
-  scale_x_continuous(breaks = c(2, 4, 6, 8, 10)) +
+  xlab("Trial Group (5 trials)") +
+  scale_x_continuous(breaks = c(4, 8, 12, 16, 20)) +
   ylab("Proportion of Optimal Choices") +
   casino.theme +
   theme(legend.position = "top") +
@@ -440,28 +375,4 @@ optimal_choice_plot <- ggplot(optimal_choice_means,
     panel.background = element_blank(),
     axis.line = element_blank()) 
 optimal_choice_plot
-```
-
-
-```{r plot mean and simulated data 2, fig.width = 8}
-optimal_choice_means <- combined_data %>%
-  mutate(trial_group = ceiling(trial_num/20)) %>%
-  group_by(block_type, age_group, model, block_order) %>%
-  summarize(mean_opt_choice = mean(prop_opt)) %>%
-  mutate(model = factor(model))
-
-opt_choice_plot_simple <- ggplot(optimal_choice_means, aes(x = block_type, color = model, y = mean_opt_choice, shape = model)) +
-  facet_grid(cols = vars(age_group), rows = vars(block_order)) +
-  coord_cartesian(ylim = c(.4, .8)) + 
-  geom_point(size = 3) +
-  geom_line(aes(group = model)) +
-  ylab("Proportion of Optimal Choices") +
-  xlab("Block Type") +
-  scale_color_manual(values = c(color1, color2, color3, 'black'), name = "Model") +
-  scale_shape_manual(values = c(20, 20, 20, 18), name = "Model") +
-  casino.theme +
-      theme(panel.border = element_rect(fill = NA, size = .5),
-    panel.background = element_blank(),
-    axis.line = element_blank()) 
-opt_choice_plot_simple
 ```
