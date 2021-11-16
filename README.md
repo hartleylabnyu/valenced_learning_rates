@@ -1,5 +1,5 @@
 # Flexibility in valenced reinforcement learning computations across development
-Tasks, data, and analysis code for: *Flexibility in valenced learning rates across development*
+Tasks, data, and analysis code for: *Flexibility in valenced reinforcement learning computations across development*
 
 We collected data from 154 participants on two tasks: a novel reinforcement learning task
 and the Matrix Reasoning Item Bank (MaRs-IB) as described in Chierchia, Fuhrmann et al. (2019). 
