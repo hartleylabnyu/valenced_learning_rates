@@ -1,6 +1,6 @@
 ---
 title: "Casino Task Analyses: RL Modeling Results"
-date: "11/3/2021"
+date: "1/27/2022"
 output: 
   html_document:
     df_print: paged
@@ -117,70 +117,148 @@ filtered_data %<>% mutate(age_group =
 ```
 
 # Model comparison
-```{r read in aics}
-aic_name <- "RL_modeling/output/aics.csv"
+```{r read in all aics}
+aic_name <- "RL_modeling/output/model_fits_real_data/aics_all.csv"
 aics <- read_csv(aic_name)
 
 #add age groups
 matlab_ids <- filtered_data %>%
-  select(matlab_id, sub_id, age, age_group, risk_good_first) %>%
+  select(matlab_id, sub_id, age, age_group, gender, risk_good_first) %>%
   unique()
   
 aics <- full_join(matlab_ids, aics, by = c("matlab_id")) %>%
   drop_na() %>%
-  select(-matlab_id)
+  select(-c(matlab_id, gender))
 
 #pivot longer
 aic_long <- aics %>%
   pivot_longer(names_to = "model",
                values_to = "aic",
                -c(sub_id, age, age_group, risk_good_first))
+
+#static LR models
+aic_static <- aic_long %>%
+  filter(!startsWith(model, "decay")) %>%
+  mutate(model_type = case_when(endsWith(model, "L") ~ "Non-sticky",
+                                endsWith(model, "S") ~ "Sticky")) 
+
+#models with stickiness
+aic_sticky <- aic_long %>%
+  filter(!endsWith(model, "L")) %>%
+  mutate(model_type = case_when(startsWith(model, "decay") ~ "Decaying Learning Rate",
+                                endsWith(model, "S") ~ "Static Learning Rate")) 
+
+aic_sticky$model_type = factor(aic_sticky$model_type, levels = c("Static Learning Rate", "Decaying Learning Rate"))
 ```
 
-```{r mean aics}
-mean_aic <- aic_long %>%
-  group_by(model) %>%
+
+```{r compute mean aics for each model type}
+#static models
+mean_aic_static <- aic_static %>%
+  group_by(model, model_type) %>%
+  summarize(mean_aic = mean(aic),
+            se_aic = se(aic),
+            N = n())
+
+mean_age_group_aic_static <- aic_static %>%
+  group_by(age_group, model, model_type) %>%
   summarize(mean_aic = mean(aic))
 
-mean_age_group_aic <- aic_long %>%
-  group_by(age_group, model) %>%
+#models with stickiness
+mean_aic_sticky <- aic_sticky %>%
+  group_by(model, model_type) %>%
+  summarize(mean_aic = mean(aic),
+            se_aic = se(aic))
+
+mean_age_group_aic_sticky <- aic_sticky %>%
+  group_by(age_group, model, model_type) %>%
   summarize(mean_aic = mean(aic))
 ```
 
-## Mean aic values
-```{r mean aic plot, fig.height = 4, fig.width = 3}
-aic_overall_plot <- ggplot(mean_aic, aes(x = model, y = mean_aic)) +
-  geom_bar(stat = "identity", position = "dodge", color = "black", fill = color2) +
+## Mean aic values: Static models with and without stickiness
+```{r mean aic plot static models, fig.height = 4, fig.width = 5}
+aic_overall_plot_static <- ggplot(mean_aic_static, aes(x = model, y = mean_aic, fill = model_type, size = model)) +
+  geom_bar(stat = "identity", position = "dodge", color = "black") +
+  scale_size_manual(values = c(.2, .2, .2, .2, .2, 1),
+                    guide = "none") +
   geom_text(aes(label=round(mean_aic, 1)), vjust= -.6, color="black", size=4)+
-  scale_fill_manual(values = c(color1)) + 
-  scale_x_discrete(labels = c("1", "2", "4"), name = "Learning Rates") +
+  scale_fill_manual(values = c(color1, color2), name = "Model Type") + 
+  scale_x_discrete(labels = c("1", "1", "2", "2", "4", "4"),
+                   name = "Learning Rates") +
   coord_cartesian(ylim = c(425, 510)) +
   ylab("Mean AIC") +
-  casino.theme 
-aic_overall_plot 
+  casino.theme +
+  theme(legend.position = "top")
+aic_overall_plot_static
 ```
 
-## Mean aic values across age groups
-```{r aic age group plot, fig.height = 4, fig.width = 5}
-aic_age_group_plot <- ggplot(mean_age_group_aic, aes(x = model, fill = age_group, y = mean_aic)) +
+## Mean aic values across age groups: Static models
+```{r aic age group plot static, fig.height = 4, fig.width = 8}
+aic_age_group_plot_static <- ggplot(mean_age_group_aic_static, aes(x = model, fill = model_type, y = mean_aic, size = model)) +
   facet_wrap(~age_group) +
   geom_bar(stat = "identity", position = "dodge", color = "black") +
   geom_text(aes(label=round(mean_aic, 1)), vjust= -.6, color="black", size=3)+
-  scale_fill_manual(values = c(color1, color2, color3), name = "Age Group", guide = "none") + 
-  scale_x_discrete(labels = c("1", "2", "4"), name = "Learning Rates") +
+    scale_size_manual(values = c(.2, .2, .2, .2, .2, 1),
+                    guide = "none") +
+  scale_fill_manual(values = c(color1, color2), name = "Model Type") + 
+  scale_x_discrete(labels = c("1", "1", "2", "2", "4", "4"),
+                   name = "Learning Rates") +
   ylab("Mean AIC") +
   coord_cartesian(ylim = c(425, 510)) +
-  casino.theme
-aic_age_group_plot
+  casino.theme +
+  theme(legend.position = "top")
+aic_age_group_plot_static
 ```
 
-## Proportion of participants best fit by each model
+## Mean aic values: Static models with stickiness
+```{r mean aic plot static with stickiness, fig.height = 4, fig.width = 3}
+mean_aic_static_sticky <- mean_aic_static %>%
+  filter(model_type == "Sticky")
+
+aic_overall_plot_static_sticky <- ggplot(mean_aic_static_sticky, aes(x = model, y = mean_aic, size = model)) +
+  geom_bar(stat = "identity", position = "dodge", color = "black", fill = color2) +
+  scale_size_manual(values = c(.2, .2, 1),
+                    guide = "none") +
+  geom_text(aes(label=round(mean_aic, 1)), vjust= -.6, color="black", size=4)+
+  scale_x_discrete(labels = c("1", "2", "4"),
+                   name = "Learning Rates") +
+  coord_cartesian(ylim = c(425, 510)) +
+  ylab("Mean AIC") +
+  casino.theme +
+  theme(legend.position = "top")
+aic_overall_plot_static_sticky
+```
+
+## Mean aic values across age groups: Static models with stickiness
+```{r aic age group plot static with sticky, fig.height = 4, fig.width = 5}
+mean_age_group_aic_static_sticky <- mean_age_group_aic_static %>%
+  filter(model_type == "Sticky")
+
+aic_age_group_plot_static_sticky <- ggplot(mean_age_group_aic_static_sticky, aes(x = model, y = mean_aic, fill = age_group, size = model)) +
+  facet_wrap(~age_group) +
+  geom_bar(stat = "identity", position = "dodge", color = "black") +
+  geom_text(aes(label=round(mean_aic, 1)), vjust= -.6, color="black", size=3)+
+    scale_size_manual(values = c(.2, .2, 1),
+                    guide = "none") +
+  scale_fill_manual(values = c(color1, color2, color3), name = "Age Group",
+                    guide = "none") + 
+  scale_x_discrete(labels = c("1", "2", "4"),
+                   name = "Learning Rates") +
+  ylab("Mean AIC") +
+  coord_cartesian(ylim = c(425, 510)) +
+  casino.theme +
+  theme(legend.position = "top")
+aic_age_group_plot_static_sticky
+```
+
+
+## Proportion of participants best fit by each model: Static w/ stickiness
 ```{r aic proportions, fig.height = 4}
 aics <- aics %>%
   mutate(best_model = 
-           case_when(`1L` < `2L` & `1L` < `4L`   ~ '1LR',
-                     `2L` < `1L` & `2L` < `4L`   ~ '2LR',
-                     `4L` < `1L` & `4L` < `1L`   ~ '4LR'))
+           case_when(`1LS` < `2LS` & `1LS` < `4LS`   ~ '1LR',
+                     `2LS` < `1LS` & `2LS` < `4LS`   ~ '2LR',
+                     `4LS` < `1LS` & `4LS` < `1LS`   ~ '4LR'))
 
 aic_props <- aics %>%
   group_by(age_group, best_model) %>%
@@ -205,10 +283,57 @@ aic_props_plot <- ggplot(aic_props, aes(best_model, age_group, fill = freq)) +
  aic_props_plot 
 ```
 
+## Mean aic values: Static and decay models
+```{r mean aic plot static and decay, fig.height = 4, fig.width = 8}
+x_labs = c(expression("1LR", "2LR", "4LR",
+                      paste(1~alpha, ", ", 1~eta),
+                      paste(1~alpha, ", ", 2~eta),
+                      paste(1~alpha, ", ", 4~eta),
+                      paste(2~alpha, ", ", 1~eta),
+                      paste(2~alpha, ", ", 2~eta),
+                      paste(2~alpha, ", ", 4~eta),
+                      paste(4~alpha, ", ", 1~eta),
+                      paste(4~alpha, ", ", 2~eta),
+                      paste(4~alpha, ", ", 4~eta)))
+
+aic_overall_plot_sticky <- ggplot(mean_aic_sticky, aes(x = model, y = mean_aic, fill = model_type, size = model)) +
+  geom_bar(stat = "identity", position = "dodge", color = "black") +
+  scale_size_manual(values = c(.2, .2, 1, .2, .2, .2, .2, .2, .2, .2, 1, .2),
+                    guide = "none") +
+  geom_text(aes(label=round(mean_aic, 1)), vjust= -.6, color="black", size=4)+
+  scale_fill_manual(values = c(color1, color2), name = "Model Type") + 
+  scale_x_discrete(labels = x_labs,
+                   name = "Model") +
+  coord_cartesian(ylim = c(425, 480)) +
+  ylab("Mean AIC") +
+  casino.theme +
+  theme(axis.text.x = element_text(angle = 65, vjust = 0.5),
+        legend.position = "top")
+aic_overall_plot_sticky
+```
+
+## Mean aic values across age groups: Static and decay models
+```{r aic age group plot static and decay, fig.height = 5, fig.width = 12}
+aic_age_group_plot_sticky <- ggplot(mean_age_group_aic_sticky, aes(x = model, fill = model_type, y = mean_aic)) +
+  facet_wrap(~age_group) +
+  geom_bar(stat = "identity", position = "dodge", color = "black") +
+  geom_text(aes(label=round(mean_aic, 1)), vjust= -.6, color="black", size=3)+
+  scale_fill_manual(values = c(color1, color2), name = "Model Type") + 
+  scale_x_discrete(labels = x_labs,
+                   name = "Model") +
+  ylab("Mean AIC") +
+  coord_cartesian(ylim = c(425, 510)) +
+  casino.theme +
+  theme(axis.text.x = element_text(angle = 65, vjust = 0.5),
+        legend.position = "top")
+aic_age_group_plot_sticky
+```
+
+
 # Parameter estimates from four learning rate model
 ```{r read in RL results}
 #read in parameter estimates
-model_params_name <- "RL_modeling/output/model_fits/four_LR.csv"
+model_params_name <- "RL_modeling/output/model_fits_real_data/params/four_LR_sticky.csv"
 model_params <- read_csv(model_params_name, 
                        col_names = c("matlab_id",
                                      "nll",
@@ -216,6 +341,7 @@ model_params <- read_csv(model_params_name,
                                      "bic",
                                      "aic",
                                      "beta",
+                                     "sticky",
                                      "alpha_pos1",
                                      "alpha_neg1",
                                      "alpha_pos2",
@@ -383,7 +509,7 @@ nice(AI.choices.model)
 ## Asymmetry indices across blocks
 ### Model: Asymmetry index by block, block order, and age
 ```{r AI by block type block order and age model, include = F}
-#process dat
+#process data
 asymmetry_indices %<>%
   mutate(age_scaled = scale_this(age),
          block_order = factor(block_order),
@@ -403,6 +529,108 @@ AI.model <- mixed(AI ~ age_scaled * block_type * block_number + (1|sub_id),
 
 ```{r display AI model output}
 nice(AI.model)
+```
+
+### Model: Asymmetry index by block, block order, and age with gender
+```{r AI by block type block order and age model with gender, include = F}
+AI.model.gender <- mixed(AI ~ age_scaled * block_type * block_number * gender + (1|sub_id), 
+                  data = asymmetry_indices,
+                  method = "S",
+                  expand_re = T)
+```
+
+```{r display AI model with gender output}
+nice(AI.model.gender)
+#just block type
+# no effect of gender or interactions
+```
+
+
+### Model: Asymmetry index by block, block order, and age with motor perseveration scores
+```{r AI model w/ motor persev, include = F}
+persev_scores <- read_csv('data/other_data_files/persev_scores.csv')
+
+AI_motor <- full_join(asymmetry_indices, persev_scores, by = c("sub_id", "age_group"))
+AI_motor$persev_score_scaled <- scale_this(AI_motor$persev_score)
+
+AI.model.motor_score <- mixed(AI ~ age_scaled * block_type * block_number * persev_score_scaled + (1|sub_id), 
+                  data = AI_motor,
+                  method = "S",
+                  expand_re = T)
+```
+
+```{r display AI model with motor output}
+nice(AI.model.motor_score)
+# main effect of block type
+# age x motor perseveration interaction effect
+```
+
+```{r motor perseveration age AI plot}
+AI_motor$age_group <- factor(AI_motor$age_group, levels = c("Children", "Adolescents", "Adults"))
+
+AI_motor_plot <- ggplot(AI_motor, aes(x = persev_score, y = AI, color = age_group, fill = age_group)) +
+  geom_point() +
+  geom_smooth(method = "lm") +
+  scale_color_manual(values = c(color1, color2, color3), name = "Age Group") +
+  scale_fill_manual(values = c(color1, color2, color3), name = "Age Group") +
+  casino.theme +
+  theme(legend.position = "none") +
+  xlab("Perseveration Score") +
+  ylab("Asymmetry Index")
+AI_motor_plot
+```
+
+### Model: Asymmetry index by block, block order, and age with MaRs
+```{r AI by block type block order and age model with mars, include = F}
+
+#get mars data
+mars_data <- read_csv("data/other_data_files/mars_accuracy.csv")
+
+#combine with AI data
+AI_mars <- inner_join(asymmetry_indices, mars_data, by = c("sub_id"))
+
+#scale variables
+AI_mars$age_scaled <- scale_this(AI_mars$age)
+AI_mars$mars_scaled <- scale_this(AI_mars$mars_acc)
+
+
+AI.model.mars <- mixed(AI ~ age_scaled * block_type * block_number * mars_scaled + (1|sub_id), 
+                  data = AI_mars,
+                  method = "S",
+                  expand_re = T)
+```
+
+```{r display AI model with mars output}
+nice(AI.model.mars)
+# just block type
+# no effect of mars or interactions
+```
+
+
+### Model: Asymmetry index by block, block order, and age excluding subs with many repeated choices
+```{r AI model with sub exclusions, include = F}
+same_choice_exclusions <- read_csv('data/other_data_files/sub_same_choice_exclusions.csv') %>%
+  select(sub_id) %>%
+  mutate(exclude = 1,
+         sub_id = as.character(sub_id))
+
+AI_exc <- full_join(asymmetry_indices, same_choice_exclusions, by = c("sub_id")) %>%
+  replace_na(list(exclude=0)) %>%
+  filter(exclude == 0)
+
+#rescale age
+AI_exc$age_scaled <- scale_this(AI_exc$age)
+
+AI.model.exc <- mixed(AI ~ age_scaled * block_type * block_number  + (1|sub_id), 
+                  data = AI_exc,
+                  method = "S",
+                  expand_re = T)
+```
+
+```{r display AI model with exclusions output}
+nice(AI.model.exc)
+# main effect of block type
+# main effect of block number
 ```
 
 ### Models: AI by block and block order within age groups
@@ -518,6 +746,22 @@ AI_indiv_plot <- ggplot(asymmetry_indices, aes(x = block_type, y = AI, fill = bl
 AI_indiv_plot
 ```
 
+
+### Asymmetry indices by continous age
+```{r plot asymmetry indices continuous age, fig.width=7, fig.height = 4.5}
+
+AI_cont_age_plot <- ggplot(asymmetry_indices, aes(x = age, y = AI, fill = block_type, color = block_type)) +
+  geom_point() +
+  geom_smooth(method = "lm") +
+  scale_color_manual(values = c(color1, color2), name = "Block Type") +
+  scale_fill_manual(values = c(color1, color2), name = "Block Type") +
+  xlab("Age (Years)") +
+  ylab("Learning Rate Asymmetry") +
+  casino.theme
+AI_cont_age_plot
+```
+
+
 ## Learning rates
 ### Model: Negative learning rates by block, block order, and age
 ```{r process learing rates data}
@@ -605,6 +849,43 @@ learning_rate_plot
 ```
 
 
+## Relations between AI and mean RTs during learning
+```{r AI RT relation}
+#read in RTs
+sub_rts <- read_csv("data/other_data_files/rt_means.csv")
+
+#join with asymmetry indices
+AI_RT <- full_join(asymmetry_indices, sub_rts, by = c("sub_id", "block_type")) 
+
+#scale variables
+AI_RT$age_scaled <- scale_this(AI_RT$age)
+AI_RT$rt_scaled <- scale_this(AI_RT$mean_rt)
+AI_RT$AI_scaled <- scale_this(AI_RT$AI)
+
+AI.RT.model <- mixed(rt_scaled ~ age_scaled * AI_scaled * block_type * block_number + (1|sub_id), 
+                  data = AI_RT, 
+                  method = "S", 
+                  expand_re = T)
+```
+
+```{r show results from AI RT model}
+nice(AI.RT.model)
+```
+
+```{r RT AI plot}
+
+RT.AI.plot <- ggplot(AI_RT, aes(x = AI, y = mean_rt, color = age_group)) +
+  geom_point() +
+  geom_smooth(method = "lm", aes(fill = age_group)) +
+  xlab("Mean Asymmetry Index") +
+  ylab("Mean Response Time (ms)") +
+  scale_color_manual(values = c(color1, color2, color3), name = "Age Group") +
+  scale_fill_manual(values = c(color1, color2, color3), name = "Age Group") +
+  casino.theme
+RT.AI.plot
+```
+
+
 ## Relations between AI and measures of 'real-world' behavior
 ```{r survey data processing}
 kid_surveys <- read_csv("data/surveys/child_survey_data_sept.csv")
@@ -635,7 +916,6 @@ AI_survey_subs <- AI_survey %>%
 kable(AI_survey_subs, col.names = c("Age Group", "N")) %>%
   kable_classic(full_width = F, html_font = "Arial") %>%
   kable_styling("striped")
-
 
 #process data for models
 AI_survey_data <- AI_survey %>%
@@ -686,9 +966,9 @@ AI.f_risk.model %>%
 ```
 
   
-## Inverse temperatures
-## Beta across age
-```{r other params and age plots, fig.height = 5, fig.width = 10}
+## Other model parameters
+### Beta across age
+```{r other params and age plots, fig.height = 5, fig.width = 5}
 #Plot other parameters vs. age
 betas <- model_params %>%
   select(sub_id, age, age_group,  beta)
@@ -703,7 +983,7 @@ beta_plot <- ggplot(betas, aes(x = age, y = beta))  +
 beta_plot
 ```
 
-## Model: Beta vs. age
+### Model: Beta vs. age
 ```{r other params and age models}
 betas %<>% mutate(
   age_scaled = scale_this(age),
@@ -717,4 +997,425 @@ beta.model %>%
   kable()%>%
   kable_classic(full_width = F, html_font = "Arial") %>%
   kable_styling("striped")
+```
+
+### Stickiness across age
+```{r stickiness and age plots, fig.height = 5, fig.width = 5}
+#Plot other parameters vs. age
+stickiness <- model_params %>%
+  select(sub_id, age, age_group,  sticky)
+
+#beta vs. age
+sticky_plot <- ggplot(stickiness, aes(x = age, y = sticky))  +
+  geom_point(size = 1, color = color2) +
+  geom_smooth(method = "lm", color = color1, fill = color1) +
+  xlab("Age") +
+  ylab("Choice Stickiness") +
+  casino.theme
+sticky_plot
+```
+
+### Model: Stickiness vs. age
+```{r stickiness and age model}
+stickiness %<>% mutate(
+  age_scaled = scale_this(age),
+  sticky_scaled = scale_this(sticky))
+
+#Stickiness vs. age
+sticky.model <- lm(sticky_scaled ~ age_scaled, data = stickiness)
+  
+sticky.model %>%
+  tidy() %>%
+  kable()%>%
+  kable_classic(full_width = F, html_font = "Arial") %>%
+  kable_styling("striped")
+```
+
+
+
+# Parameter estimates from decay model (4 alpha, 2 eta)
+```{r read in decay RL results}
+#read in parameter estimates
+decay_params_name <- "RL_modeling/output/model_fits_real_data/params/decay_four_alpha_two_eta.csv"
+decay_params <- read_csv(decay_params_name, 
+                       col_names = c("matlab_id",
+                                     "nll",
+                                     "logpost",
+                                     "bic",
+                                     "aic",
+                                     "beta",
+                                     "sticky",
+                                     "alpha_init_pos_risk_good",
+                                     "alpha_init_neg_risk_good",
+                                     "alpha_init_pos_risk_bad",
+                                     "alpha_init_neg_risk_bad",
+                                     "eta_pos",
+                                     "eta_neg"))
+
+#join w/ matlab IDs
+decay_params <- full_join(decay_params, matlab_ids, by = c('matlab_id'))
+```
+
+```{r decay parameter estimates plots}
+decay_params_long <- decay_params %>% pivot_longer(alpha_init_pos_risk_good:eta_neg,
+                                                  names_to = 'param',
+                                                  values_to = 'estimate')
+
+decay_params_long$param <- factor(decay_params_long$param, 
+                                  levels = c("alpha_init_pos_risk_good",
+                                             "alpha_init_neg_risk_good",
+                                             "alpha_init_pos_risk_bad",
+                                             "alpha_init_neg_risk_bad",
+                                             "eta_pos",
+                                             "eta_neg"))
+
+decay_param_means <- decay_params_long %>%
+  group_by(age_group, param) %>%
+  summarize(mean_estimate = mean(estimate, na.rm = T))
+
+decay_param_plot <- ggplot(decay_param_means, aes(x = age_group, y = mean_estimate, fill = param), color = 'black') +
+  geom_bar(stat = "identity", position = "dodge", color = 'black') +
+  scale_fill_manual(values = c("blue", "forestgreen", "lightblue", "lightgreen", "red", "pink")) +
+  xlab("Age Group") +
+  ylab("Mean Estimate") +
+  casino.theme
+decay_param_plot
+```
+
+## Mean learning rates across trials
+```{r positive and negative learning rate across trials, fig.width = 8, fig.height = 6}
+
+#make data frame with list of trials for each sub
+trial_num <- rep(c(1:100),times=284)
+subs <- unique(decay_params$sub_id)
+sub_id <- rep(subs, each=200)
+sub_trials <- data.frame(sub_id, trial_num)
+
+#add to decay learning rates
+decay_learning_rates <- decay_params %>%
+  select(sub_id, age, age_group, risk_good_first, alpha_init_pos_risk_good:eta_neg) %>%
+  full_join(sub_trials, by = c("sub_id")) %>%
+  mutate(pos_learning_rate_risk_good = alpha_init_pos_risk_good / (1 + eta_pos*(trial_num-1)),
+         neg_learning_rate_risk_good = alpha_init_neg_risk_good / (1 + eta_neg*(trial_num-1)),
+         pos_learning_rate_risk_bad = alpha_init_pos_risk_bad / (1 + eta_pos*(trial_num-1)),
+         neg_learning_rate_risk_bad = alpha_init_neg_risk_bad/ (1 + eta_neg*(trial_num-1))) %>%
+  select(sub_id, trial_num, age, age_group, risk_good_first, pos_learning_rate_risk_good:neg_learning_rate_risk_bad) %>%
+  pivot_longer(cols = c(pos_learning_rate_risk_good:neg_learning_rate_risk_bad),
+               names_to = "learning_rate",
+               values_to = "estimate") %>%
+  mutate(block_type = case_when(endsWith(learning_rate, "good") ~ "Risk Good",
+                                endsWith(learning_rate, "bad") ~ "Risk Bad"),
+         valence = case_when(startsWith(learning_rate, "pos") ~ "Positive",
+                                startsWith(learning_rate, "neg") ~ "Negative"))
+
+
+#compute mean learning rate across trials
+decay_learning_rate_means <- decay_learning_rates %>%
+  group_by(age_group, trial_num, block_type, valence) %>%
+  summarize(mean_learning_rate = mean(estimate, na.rm = T),
+            se_learning_rate = se(estimate))
+
+#plot
+decay_learning_rate_plot <- ggplot(decay_learning_rate_means, aes(x = trial_num, y = mean_learning_rate, color = valence)) +
+  facet_grid(cols = vars(age_group), rows = vars(block_type)) +
+  geom_point() +
+  geom_errorbar(aes(ymin = mean_learning_rate - se_learning_rate,
+                    ymax = mean_learning_rate + se_learning_rate),
+                width = .1,
+                alpha = .3) +
+  geom_line(aes(group = valence)) +
+  scale_color_manual(values = c(color1, color2)) +
+  xlab("Trial") +
+  ylab("Mean Learning Rate") +
+  casino.theme
+decay_learning_rate_plot 
+```
+
+## Mean AI across blocks
+```{r decay plot mean AI across trials, fig.width = 7, fig.height = 5}
+decay_AI <- decay_params %>%
+  select(sub_id, age, age_group, risk_good_first, alpha_init_pos_risk_good:eta_neg) %>%
+  full_join(sub_trials, by = c("sub_id")) %>%
+  mutate(pos_learning_rate_risk_good = alpha_init_pos_risk_good / (1 + eta_pos*(trial_num-1)),
+         neg_learning_rate_risk_good = alpha_init_neg_risk_good / (1 + eta_neg*(trial_num-1)),
+         pos_learning_rate_risk_bad = alpha_init_pos_risk_bad / (1 + eta_pos*(trial_num-1)),
+         neg_learning_rate_risk_bad = alpha_init_neg_risk_bad/ (1 + eta_neg*(trial_num-1)),
+         risk_good = (pos_learning_rate_risk_good - neg_learning_rate_risk_good) / (pos_learning_rate_risk_good + neg_learning_rate_risk_good),
+        risk_bad = (pos_learning_rate_risk_bad - neg_learning_rate_risk_bad) / (pos_learning_rate_risk_bad + neg_learning_rate_risk_bad)) %>%
+  select(sub_id, trial_num, age, age_group, risk_good_first, risk_good, risk_bad) %>%
+  pivot_longer(risk_good:risk_bad,
+               names_to = "block_type",
+               values_to = "AI")
+
+#determine block number
+decay_AI <- decay_AI %>%
+  mutate(block_number = case_when(block_type == "risk_good" & risk_good_first == TRUE ~ 1,
+                                  block_type == "risk_good" & risk_good_first == FALSE ~ 2,
+                                  block_type == "risk_bad" & risk_good_first == TRUE ~ 2,
+                                  block_type == "risk_bad" & risk_good_first == FALSE ~ 1))
+
+decay_AI$block_number <- factor(decay_AI$block_number)
+
+
+#compute mean AI
+decay_AI_means <- decay_AI %>%
+  group_by(age_group, trial_num, block_type) %>%
+  summarize(mean_AI = mean(AI, na.rm = T),
+            se_AI = se(AI))
+
+#plot
+decay_AI_plot <- ggplot(decay_AI_means, aes(x = trial_num, y = mean_AI, color = block_type)) +
+  facet_grid(cols = vars(age_group)) +
+  geom_point() +
+  geom_errorbar(aes(ymin = mean_AI - se_AI,
+                    ymax = mean_AI + se_AI),
+                width = .1,
+                alpha = .3) +
+  geom_line(aes(group = block_type)) +
+  scale_color_manual(values = c(color1, color2),
+                     name = "Block Type",
+                     labels = c("Risk Bad", "Risk Good")) +
+  xlab("Trial") +
+  ylab("Mean AI") +
+  casino.theme
+decay_AI_plot 
+```
+
+## Mean AI across block number
+```{r decay plot mean AI across trials with block number, fig.width = 7, fig.height = 5}
+
+#compute mean AI
+decay_AI_means <- decay_AI %>%
+  group_by(age_group, trial_num, block_number) %>%
+  summarize(mean_AI = mean(AI, na.rm = T),
+            se_AI = se(AI))
+
+#plot
+decay_AI_plot <- ggplot(decay_AI_means, aes(x = trial_num, y = mean_AI, color = block_number)) +
+  facet_grid(cols = vars(age_group)) +
+  geom_point() +
+  geom_errorbar(aes(ymin = mean_AI - se_AI,
+                    ymax = mean_AI + se_AI),
+                width = .1,
+                alpha = .3) +
+  geom_line(aes(group = block_number)) +
+  scale_color_manual(values = c(color1, color2),
+                     name = "Block Number",
+                     labels = c("1st Block", "2nd Block")) +
+  xlab("Trial") +
+  ylab("Mean AI") +
+  casino.theme
+decay_AI_plot 
+```
+
+
+
+## Model: Asymmetry index by trial, block, block number, and age
+```{r AI across blocks model w/ decay params}
+
+#scale variables
+decay_AI$age_scaled <- scale_this(decay_AI$age)
+decay_AI$trial_scaled <- scale_this(decay_AI$trial_num)
+
+#run model
+decay.AI.model <- mixed(AI ~ age_scaled * trial_scaled * block_type * block_number +
+                          (trial_scaled + block_type + block_number| sub_id),
+                          data = decay_AI,
+                          method = "S",
+                          expand_re = T,
+                          control = lmerControl(optimizer = "bobyqa", optCtrl=list(maxfun=1e6)))
+#does not converge w/ interactions in RE
+```
+
+```{r display output from decay AI model}
+nice(decay.AI.model)
+# trial
+# trial x age
+# trial x block type
+# trial x block number
+# age x trial x block type
+# age x trial x block number
+```
+
+
+
+
+# Parameter estimates from decay model (4 alpha, 4 eta)
+```{r read in decay RL results 2}
+#read in parameter estimates
+decay_params_name <- "RL_modeling/output/model_fits_real_data/params/decay_four_alpha_four_eta.csv"
+decay_params <- read_csv(decay_params_name, 
+                       col_names = c("matlab_id",
+                                     "nll",
+                                     "logpost",
+                                     "bic",
+                                     "aic",
+                                     "beta",
+                                     "sticky",
+                                     "alpha_init_pos_risk_good",
+                                     "alpha_init_neg_risk_good",
+                                     "alpha_init_pos_risk_bad",
+                                     "alpha_init_neg_risk_bad",
+                                     "eta_pos_risk_good",
+                                     "eta_neg_risk_good",
+                                     "eta_pos_risk_bad",
+                                     "eta_neg_risk_bad"))
+
+#join w/ matlab IDs
+decay_params <- full_join(decay_params, matlab_ids, by = c('matlab_id'))
+```
+
+```{r decay parameter estimates plots 2}
+decay_params_long <- decay_params %>% pivot_longer(alpha_init_pos_risk_good:eta_neg_risk_bad,
+                                                  names_to = 'param',
+                                                  values_to = 'estimate')
+
+decay_params_long$param <- factor(decay_params_long$param, 
+                                  levels = c("alpha_init_pos_risk_good",
+                                             "alpha_init_neg_risk_good",
+                                             "alpha_init_pos_risk_bad",
+                                             "alpha_init_neg_risk_bad",
+                                              "eta_pos_risk_good",
+                                              "eta_neg_risk_good",
+                                              "eta_pos_risk_bad",
+                                              "eta_neg_risk_bad"))
+
+decay_param_means <- decay_params_long %>%
+  group_by(age_group, param) %>%
+  summarize(mean_estimate = mean(estimate, na.rm = T))
+
+decay_param_plot <- ggplot(decay_param_means, aes(x = age_group, y = mean_estimate, fill = param), color = 'black') +
+  geom_bar(stat = "identity", position = "dodge", color = 'black') +
+  scale_fill_manual(values = c("blue", "forestgreen", "lightblue", "lightgreen", "red", "pink", "darkorange", "yellow")) +
+  xlab("Age Group") +
+  ylab("Mean Estimate") +
+  casino.theme
+decay_param_plot
+```
+
+## Mean learning rates across trials
+```{r positive and negative learning rate across trials 2}
+
+#make data frame with list of trials for each sub
+trial_num <- rep(c(1:100),times=284)
+subs <- unique(decay_params$sub_id)
+sub_id <- rep(subs, each=200)
+sub_trials <- data.frame(sub_id, trial_num)
+
+#add to decay learning rates
+decay_learning_rates <- decay_params %>%
+  select(sub_id, age, age_group, risk_good_first, alpha_init_pos_risk_good:eta_neg_risk_bad) %>%
+  full_join(sub_trials, by = c("sub_id")) %>%
+  mutate(pos_learning_rate_risk_good = alpha_init_pos_risk_good / (1 + eta_pos_risk_good*(trial_num-1)),
+         neg_learning_rate_risk_good = alpha_init_neg_risk_good / (1 + eta_neg_risk_good*(trial_num-1)),
+         pos_learning_rate_risk_bad = alpha_init_pos_risk_bad / (1 + eta_pos_risk_bad*(trial_num-1)),
+         neg_learning_rate_risk_bad = alpha_init_neg_risk_bad/ (1 + eta_neg_risk_bad*(trial_num-1))) %>%
+  select(sub_id, trial_num, age, age_group, risk_good_first, pos_learning_rate_risk_good:neg_learning_rate_risk_bad) %>%
+  pivot_longer(cols = c(pos_learning_rate_risk_good:neg_learning_rate_risk_bad),
+               names_to = "learning_rate",
+               values_to = "estimate") %>%
+  mutate(block_type = case_when(endsWith(learning_rate, "good") ~ "Risk Good",
+                                endsWith(learning_rate, "bad") ~ "Risk Bad"),
+         valence = case_when(startsWith(learning_rate, "pos") ~ "Positive",
+                                startsWith(learning_rate, "neg") ~ "Negative"))
+
+
+#compute mean learning rate across trials
+decay_learning_rate_means <- decay_learning_rates %>%
+  group_by(age_group, trial_num, block_type, valence) %>%
+  summarize(mean_learning_rate = mean(estimate, na.rm = T),
+            se_learning_rate = se(estimate))
+
+#plot
+decay_learning_rate_plot <- ggplot(decay_learning_rate_means, aes(x = trial_num, y = mean_learning_rate, color = valence)) +
+  facet_grid(cols = vars(age_group), rows = vars(block_type)) +
+  geom_point() +
+  geom_errorbar(aes(ymin = mean_learning_rate - se_learning_rate,
+                    ymax = mean_learning_rate + se_learning_rate),
+                 width = .1,
+                alpha = .3) +
+  geom_line(aes(group = valence)) +
+  scale_color_manual(values = c(color1, color2)) +
+  xlab("Trial") +
+  ylab("Mean Learning Rate") +
+  casino.theme
+decay_learning_rate_plot 
+```
+
+## Mean AI across blocks
+```{r decay plot mean AI across trials 2, fig.width = 7, fig.height = 5}
+decay_AI <- decay_params %>%
+  select(sub_id, age, age_group, risk_good_first, alpha_init_pos_risk_good:eta_neg_risk_bad) %>%
+  full_join(sub_trials, by = c("sub_id")) %>%
+  mutate(pos_learning_rate_risk_good = alpha_init_pos_risk_good / (1 + eta_pos_risk_good*(trial_num-1)),
+         neg_learning_rate_risk_good = alpha_init_neg_risk_good / (1 + eta_neg_risk_good*(trial_num-1)),
+         pos_learning_rate_risk_bad = alpha_init_pos_risk_bad / (1 + eta_pos_risk_bad*(trial_num-1)),
+         neg_learning_rate_risk_bad = alpha_init_neg_risk_bad/ (1 + eta_neg_risk_bad*(trial_num-1)),
+         risk_good = (pos_learning_rate_risk_good - neg_learning_rate_risk_good) / (pos_learning_rate_risk_good + neg_learning_rate_risk_good),
+        risk_bad = (pos_learning_rate_risk_bad - neg_learning_rate_risk_bad) / (pos_learning_rate_risk_bad + neg_learning_rate_risk_bad)) %>%
+  select(sub_id, trial_num, age, age_group, risk_good_first, risk_good, risk_bad) %>%
+  pivot_longer(risk_good:risk_bad,
+               names_to = "block_type",
+               values_to = "AI")
+
+#determine block number
+decay_AI <- decay_AI %>%
+  mutate(block_number = case_when(block_type == "risk_good" & risk_good_first == TRUE ~ 1,
+                                  block_type == "risk_good" & risk_good_first == FALSE ~ 2,
+                                  block_type == "risk_bad" & risk_good_first == TRUE ~ 2,
+                                  block_type == "risk_bad" & risk_good_first == FALSE ~ 1))
+
+decay_AI$block_number <- factor(decay_AI$block_number)
+
+
+#compute mean AI
+decay_AI_means <- decay_AI %>%
+  group_by(age_group, trial_num, block_type) %>%
+  summarize(mean_AI = mean(AI, na.rm = T),
+            se_AI = se(AI))
+
+#plot
+decay_AI_plot <- ggplot(decay_AI_means, aes(x = trial_num, y = mean_AI, color = block_type)) +
+  facet_grid(cols = vars(age_group)) +
+  geom_point() +
+  geom_errorbar(aes(ymin = mean_AI - se_AI,
+                    ymax = mean_AI + se_AI),
+                                width = .1,
+                alpha = .3) +
+  geom_line(aes(group = block_type)) +
+  scale_color_manual(values = c(color1, color2),
+                     name = "Block Type",
+                     labels = c("Risk Bad", "Risk Good")) +
+  xlab("Trial") +
+  ylab("Mean AI") +
+  casino.theme
+decay_AI_plot 
+```
+
+
+## Model: Asymmetry index by trial, block, block number, and age
+```{r AI across blocks model w/ decay params 2}
+
+#scale variables
+decay_AI$age_scaled <- scale_this(decay_AI$age)
+decay_AI$trial_scaled <- scale_this(decay_AI$trial_num)
+
+#run model
+decay.AI.model <- mixed(AI ~ age_scaled * trial_scaled * block_type * block_number +
+                          (trial_scaled + block_type + block_number| sub_id),
+                          data = decay_AI,
+                          method = "S",
+                          expand_re = T,
+                          control = lmerControl(optimizer = "bobyqa", optCtrl=list(maxfun=1e6)))
+#does not converge w/ interactions in RE
+```
+
+```{r display output from decay AI model 2}
+nice(decay.AI.model)
+# trial
+# trial x age
+# trial x block type
+# trial x block number
+# age x trial x block type
+# age x trial x block number
 ```

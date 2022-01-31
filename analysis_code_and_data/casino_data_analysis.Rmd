@@ -1,6 +1,6 @@
 ---
 title: "Casino Task Data Analysis"
-date: "11/3/2021"
+date: "1/27/2022"
 output: 
   html_document:
     df_print: paged
@@ -341,6 +341,7 @@ kable(gender_stats, digits = 2, col.names = c("Age Group", "Sex", "N"),
 
 This left a final sample of `r children_included` children, `r adolescents_included` adolescents, and `r adults_included` adults.
 
+
 ## Comprehension question attempts
 ```{r comp q attempts}
 #get the number of quiz attempts for each participant
@@ -382,6 +383,19 @@ lm(mars_acc_scaled ~ age_scaled, mars_data) %>%
   kable_styling("striped", position = "float_left")
 ```
 
+## Model: MaRs accuracy and age with gender
+```{r mars accuracy and age with gender model}
+
+lm(mars_acc_scaled ~ age_scaled * gender, mars_data) %>%
+  tidy() %>%
+  kable()%>%
+  kable_classic(full_width = F, html_font = "Arial") %>%
+  kable_styling("striped", position = "float_left")
+
+#no effect of gender
+```
+
+
 ## MaRs accuracy and age
 ```{r mars accuracy and age, fig.height = 5, fig.width = 5}
 mars_acc_plot <- ggplot(mars_data, aes(x = age, y = mars_acc)) +
@@ -400,6 +414,7 @@ learning_data <- filtered_data %>%
       select(c(trial_index,
            sub_id,
            matlab_id,
+           gender,
            age,
            age_group,
            risk_good_first,
@@ -460,7 +475,7 @@ matlab_data <- learning_data %>%
   select(-c(choice_position, card_letter)) %>%
   drop_na()
 
-write_csv(matlab_data, "data/other_data_files/matlab_choice_data.csv")
+#write_csv(matlab_data, "data/other_data_files/matlab_choice_data.csv")
 ```
 
 
@@ -507,6 +522,83 @@ choice_plot <- ggplot(choice_data, aes(x = trial_group, y = prop_choices, color 
 choice_plot
 ```
 
+## Reaction times across trials
+```{r plot choice reaction times}
+#determine each participant's mean rt
+rt_data <- learning_data %>%
+  filter(task_part == "real_trial") %>% 
+  group_by(sub_id, block_type) %>%
+  mutate(trial = rank(trial_index),
+         trial_group = ceiling(trial/20)) %>%
+  ungroup() %>%
+  group_by(sub_id, block_type, trial_group, age_group, block_number) %>%
+  summarize(mean_sub_rt = mean(rt, na.rm = T)) 
+
+#save each participant's average RT
+sub_rt_means <- rt_data %>%
+  group_by(sub_id, block_type) %>%
+  summarize(mean_rt = mean(mean_sub_rt))
+
+#save for further analyses in modeling script
+#write_csv(sub_rt_means, 'data/other_data_files/rt_means.csv')
+
+#determine mean rt within age groups
+age_group_rt <- rt_data %>% 
+  group_by(block_type, trial_group, age_group, block_number) %>%
+  summarize(mean_rt = mean(mean_sub_rt, na.rm = T),
+            se_rt = se(mean_sub_rt))
+
+#plot
+rt_plot <- ggplot(age_group_rt, aes(x = trial_group, y = mean_rt, color = factor(block_number))) +
+  facet_grid(cols = vars(age_group), rows = vars(block_type)) +
+  scale_color_manual(values = c(color1, color2), name = "Block Number") +
+  ylab("Mean RT (ms)") +
+  xlab("Trial Group (20 trials)") +
+  geom_line() +
+  geom_point() + 
+  geom_errorbar(aes(ymin = mean_rt - se_rt, ymax = mean_rt + se_rt), width = .1) +
+  casino.theme +
+    theme(panel.border = element_rect(fill = NA, size = .5),
+    panel.background = element_blank(),
+    axis.line = element_blank()) 
+rt_plot
+```
+
+## Model: Reaction times by age, trial, block type and block number
+```{r reaction time model, include = F}
+#prep data
+rt_data <- learning_data %>%
+  filter(task_part == "real_trial") %>% 
+  group_by(sub_id, block_type) %>%
+  mutate(trial = rank(trial_index)) %>%
+  filter(rt > 0) #remove NA
+
+rt_data$age_scaled <- scale_this(rt_data$age)
+rt_data$block_number <- factor(rt_data$block_number)
+rt_data$trial_scaled <- scale_this(rt_data$trial_index)
+
+
+#run model
+rt_model <- mixed(rt ~ age_scaled * trial_scaled * block_type * block_number + 
+                          (trial_scaled * block_number |sub_id), 
+                          data = rt_data,
+                          method = "S",
+                          control = lmerControl(optimizer = "bobyqa", optCtrl=list(maxfun=1e6)))
+
+#does not converge w/ both block_type and block_number in RE
+
+```
+
+```{r display rt model output}
+nice(rt_model)
+
+#Effects of:
+# age
+# trial
+# block number
+# age x trial x block type x block number
+```
+
 ## Win-stay lose-shift behavior
 ```{r plot win-stay lose-shift}
 #determine each participant's choices per trial group
@@ -523,17 +615,17 @@ wsls_data <- learning_data %>%
                               prev_reward < 0 ~ 0))
 
 sub_wsls <- wsls_data %>%
-  group_by(sub_id, block_type, age_group, prev_win) %>%
+  group_by(sub_id, age_group, prev_win) %>%
   summarize(sub_stay_prob = mean(stay, na.rm = T)) %>%
   drop_na()
 
 age_group_wsls <- sub_wsls %>%
-  group_by(block_type, age_group, prev_win) %>%
+  group_by(age_group, prev_win) %>%
   summarize(stay_prob = mean(sub_stay_prob, na.rm = T),
             se_stay_prob = se(sub_stay_prob))
 
 #plot
-wsls_plot <- ggplot(age_group_wsls, aes(x = as.factor(prev_win), y = stay_prob, fill = block_type)) +
+wsls_plot <- ggplot(age_group_wsls, aes(x = as.factor(prev_win), y = stay_prob)) +
   facet_wrap(~age_group) +
   scale_fill_manual(values = c(color1, color2), name = "Block Type") +
   scale_x_discrete(labels = c("Lose", "Win")) +
@@ -543,6 +635,83 @@ wsls_plot <- ggplot(age_group_wsls, aes(x = as.factor(prev_win), y = stay_prob, 
   geom_errorbar(aes(ymin = stay_prob - se_stay_prob, ymax = stay_prob + se_stay_prob), width = .1, position = position_dodge(width = .9)) +
   casino.theme
 wsls_plot
+```
+
+## Motor perseveration
+```{r motor perseveration plot}
+#do participants choose the same location after a win?
+motor_persev_data <- learning_data %>%
+  filter(task_part == "real_trial") %>% 
+  group_by(sub_id, block_type) %>%
+  mutate(trial = rank(trial_index),
+         trial_group = ceiling(trial/20),
+         prev_position = lag(choice_position),
+         stay = case_when(prev_position == choice_position ~ 1,
+                          prev_position != choice_position ~ 0),
+         prev_reward = lag(points_earned),
+         prev_win = case_when(prev_reward > 0 ~ 1,
+                              prev_reward < 0 ~ 0))
+
+
+sub_persev <- motor_persev_data %>%
+  group_by(sub_id, age_group, prev_win) %>%
+  summarize(sub_stay_prob = mean(stay, na.rm = T)) %>%
+  drop_na() 
+
+persev_scores <- sub_persev %>%
+  pivot_wider(names_from = prev_win,
+              values_from = sub_stay_prob) %>%
+  mutate(persev_score = `1` - `0`) %>%
+  select(sub_id, persev_score)
+
+#save
+#write_csv(persev_scores, 'data/other_data_files/persev_scores.csv')
+
+age_group_persev <- sub_persev %>%
+  group_by(age_group, prev_win) %>%
+  summarize(stay_prob = mean(sub_stay_prob, na.rm = T),
+            se_stay_prob = se(sub_stay_prob))
+
+
+motor_persev_plot <- ggplot(age_group_persev, aes(fill = as.factor(prev_win), y = stay_prob, x = age_group)) +
+  scale_fill_manual(values = c(color1, color2), name = "Previous Outcome Type",
+                    labels = c("Lose", "Win")) +
+  #scale_x_discrete(labels = c("Lose", "Win")) +
+  ylab("Proportion of Repeated Responses") +
+  xlab("Age Group") +
+  geom_hline(yintercept = .25, linetype = "dashed") +
+  coord_cartesian(ylim = c(0, .5)) +
+  geom_bar(stat = "identity", position = "dodge", color = "black") +
+  geom_errorbar(aes(ymin = stay_prob - se_stay_prob, ymax = stay_prob + se_stay_prob), width = .1, position = position_dodge(width = .9)) +
+  casino.theme
+motor_persev_plot
+```
+
+## Model: Motor perseveration by previous win and age
+```{r motor perseveration model}
+#prep data
+motor_persev_data <- motor_persev_data %>%
+  select(sub_id, age, stay, prev_win) %>%
+  drop_na
+
+#prep variables
+motor_persev_data$age_scaled <- scale_this(motor_persev_data$age)
+motor_persev_data$prev_win <- factor(motor_persev_data$prev_win)
+
+#run model
+motor_persev_model <- mixed(stay ~ age_scaled * prev_win + 
+                          (prev_win |sub_id), 
+                          data = motor_persev_data,
+                          family = "binomial", 
+                          method = "LRT",
+                          control = glmerControl(optimizer = "bobyqa", optCtrl=list(maxfun=1e6)))
+```
+
+```{r display motor persev model output}
+nice(motor_persev_model)
+
+#prev win
+# age x prev win
 ```
 
 ```{r optimal choice data processing}
@@ -607,6 +776,28 @@ optimal_choice_time_plot <- ggplot(optimal_choices_time_age_group, aes(x = trial
   ylab("Proportion of Optimal Choices") +
   casino.theme
 optimal_choice_time_plot
+```
+
+## Optimal choices across block types by continous age
+```{r optimal choices continuous age}
+# determine each participant's proportion of optimal choices within each trial group
+optimal_choices_subs <- optimal_choices %>%
+  group_by(sub_id, age, block_type) %>%
+  ungroup() %>%
+  group_by(sub_id, age, block_type) %>%
+  summarize(prop_optimal = mean(optimal_choice, na.rm = T))
+
+#plot
+optimal_choice_age_plot <- ggplot(optimal_choices_subs, aes(x = age, y = prop_optimal, color = block_type)) +
+  geom_point(size = 1) +
+  geom_smooth(method = "lm", aes(fill = block_type)) +
+  scale_color_manual(values = c(color1, color2),  name = "Block Type") +
+  scale_fill_manual(values = c(color1, color2),  name = "Block Type") +
+  geom_hline(yintercept = .5, color = "grey", linetype = "dashed") +
+  xlab("Age (Years)") +
+  ylab("Proportion of Optimal Choices") +
+  casino.theme
+optimal_choice_age_plot
 ```
 
 ## Optimal choices across trials, block types and block orders
@@ -698,6 +889,34 @@ opt_choice_model <- mixed(optimal_choice ~ age_scaled * trial_scaled * block_typ
 ```{r display opt choice model output}
 nice(opt_choice_model)
 ```
+
+## Model: Optimal choices across ages, trials, block types, and blocks (1st vs. 2nd) with gender
+```{r optimal choices w/ block order regression with gender, include = F}
+#prep data
+optimal_choice_data <- optimal_choices %>%
+  group_by(sub_id, block) %>%
+  mutate(trial = rank(trial_index)) %>%
+  ungroup() %>%
+  select(sub_id, optimal_choice, age, gender, trial, block_type, block_number) %>%
+  drop_na() %>%
+  mutate(trial_scaled = scale_this(trial),
+         age_scaled = scale_this(age),
+         block_number = factor(block_number))
+
+#run model
+opt_choice_model.gender <- mixed(optimal_choice ~ age_scaled * trial_scaled * block_type * block_number * gender + 
+                          (trial_scaled * block_type|sub_id), 
+                          data = optimal_choice_data,
+                          family = "binomial", 
+                          method = "LRT",
+                          control = glmerControl(optimizer = "bobyqa", optCtrl=list(maxfun=1e6)))
+```
+
+
+```{r display opt choice model with gender output}
+nice(opt_choice_model.gender)
+```
+
 
 ## Model: Optimal choices controlling for mars accuracy
 ```{r optimal choices w/ mars regression, include = F}

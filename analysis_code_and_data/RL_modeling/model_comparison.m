@@ -5,11 +5,11 @@
 clear
 
 % determine names for data saving
-aic_filename = 'output/aics.csv';
-bic_filename = 'output/bics.csv';
+aic_filename = 'output/aics_all.csv';
+bic_filename = 'output/bics_all.csv';
 
 % Load model fits
-load('output/model_fits/choice_data_fits');
+load('output/model_fits/choice_data_fits_all');
 
 %Determine number of models
 num_models = length(model_fits);

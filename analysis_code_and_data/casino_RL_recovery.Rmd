@@ -46,18 +46,25 @@ se <- function(x){
 ```
 
 ```{r define file names}
-#define directory name
+#define modeling output directory name
 modeling_dir <- 'RL_modeling/output'
 
+#simulated reward earned across learning rate combinations
+sim_reward_earned_name <- glue("{modeling_dir}/2LR_sim_results.csv") 
+
 #aic values for each dataset & model
-aic_recov_name <- glue("{modeling_dir}/aic_recovery.csv")
+aic_recov_name <- glue("{modeling_dir}/model_recoverability/aic_recovery_static_sticky.csv") 
+aic_recov_all_name <- glue("{modeling_dir}/model_recoverability/aic_recovery_all_sticky.csv")
 
 #simulated and recovered parameter values from four LR model
-sim_params_name <- glue("{modeling_dir}/fourLR_sim_params.csv")
-fit_params_name <- glue("{modeling_dir}/fourLR_fit_params.csv")
+sim_params_name <- glue("{modeling_dir}/param_recoverability/fourLR_sticky_sim_params.csv")
+fit_params_name <- glue("{modeling_dir}/param_recoverability/fourLR_sticky_fit_params.csv")
 
 #proportion of optimal choices from model simulations
-fourLR_choices_name <- glue("{modeling_dir}/four_LR_opt_choices_sim.csv") 
+fourLR_choices_name <- glue("{modeling_dir}/posterior_predictive_checks/four_LR_sticky_opt_choices_sim.csv") 
+decay_choices_name <- glue("{modeling_dir}/posterior_predictive_checks/decay_four_alpha_two_eta_opt_choices_sim.csv") 
+decay2_choices_name <- glue("{modeling_dir}/posterior_predictive_checks/decay_four_alpha_four_eta_opt_choices_sim.csv") 
+oneLR_choices_name <- glue("{modeling_dir}/posterior_predictive_checks/one_LR_sticky_opt_choices_sim.csv") 
 ```
 
 ```{r define plot aesthetics }
@@ -80,6 +87,31 @@ casino.theme <- theme(panel.background = element_rect(fill='transparent'),
                     strip.text.x = element_text(size=12), 
                     strip.text.y = element_text(size=12, face="bold"), 
                     strip.background = element_rect(colour= "black", fill = "transparent"))
+```
+
+# Simulations of Reward Earned with Different Learning Rates
+```{r two LR sim results, fig.width = 10}
+twoLR_results <- read_csv(sim_reward_earned_name) %>%
+  pivot_longer(cols = risk_good_reward:risk_bad_reward,
+               names_to = "block_type",
+               values_to = "total_reward")
+
+#determine average reward for each combination of alphas
+reward_means <- twoLR_results %>%
+  group_by(block_type, alpha_pos, alpha_neg) %>%
+  summarize(mean_reward = mean(total_reward)) 
+
+reward_means$block_type <- factor(reward_means$block_type, labels= c("Risk Bad", "Risk Good"))
+  
+#heatmap
+reward_heatmap <- ggplot(reward_means, aes(x = alpha_pos, y = alpha_neg, fill = mean_reward)) +
+  facet_wrap(~block_type) +
+  geom_tile() +
+  scale_fill_viridis_c(name = "Average Reward Earned", option = "mako") + 
+  xlab("Positive Learning Rate") +
+  ylab("Negative Learning Rate") +
+  casino.theme
+reward_heatmap
 ```
 
 # Parameter recovery
@@ -111,6 +143,22 @@ beta_plot <- ggplot(params, aes(x = beta_sim, y = beta_fit)) +
    labs(title="\u03B2") +
   casino.theme
 beta_plot
+```
+
+```{r stickiness plot}
+sticky_plot <- ggplot(params, aes(x = choice_c_sim, y = choice_c_fit)) +
+  geom_point(color = color2, alpha = .4, size = 1) +
+  geom_smooth(method = "lm", color = "black") +
+  xlab("Simulated Parameter") +
+  ylab("Recovered Parameter") +
+  annotate("text", 
+           x = 9, y = -10, 
+           label=(paste0("italic(r)==", round(cor(params$choice_c_sim, params$choice_c_fit),2))),
+           parse = T) +
+   labs(title="\u1D69") +
+  casino.theme +
+  theme(plot.title = element_text(size=26))
+sticky_plot
 ```
 
 ```{r alpha_pos_risk_good plot}
@@ -180,7 +228,7 @@ aic_recov <- read_csv(aic_recov_name, skip = 1, col_names = c('sim', 'fit'))
 
 ```{r recovery plot, fig.height = 4.5, fig.width = 5}
 aic_props <- aic_recov %>%
-  mutate(sim = factor(sim, levels = c("one_LR", "two_LR", "four_LR")),
+  mutate(sim = factor(sim, levels = c("one_LR_sticky", "two_LR_sticky", "four_LR_sticky")),
          fit = factor(fit, levels = c(3, 2, 1))) %>%
   group_by(sim, fit, .drop = F) %>%
   summarise(n = n(), .drop = F) %>%
@@ -194,6 +242,47 @@ aic_props_plot <- ggplot(aic_props, aes(sim, fit, fill = freq)) +
                       guide = "none") +
   scale_x_discrete(labels = c("1 LR", "2 LR", "4 LR"), name = "Simulated Model") +
   scale_y_discrete(labels = c("4 LR", "2 LR", "1 LR"), name = "Recovered Model") +
+  casino.theme
+ aic_props_plot 
+```
+
+## Model recovery: all models
+```{r read in all model recovery results}
+aic_recov <- read_csv(aic_recov_all_name, skip = 1, col_names = c('sim', 'fit'))
+```
+
+```{r all recovery plot, fig.height = 8, fig.width = 10}
+
+x_labs = c(expression("1LR", "2LR", "4LR",
+                      paste(1~alpha, ", ", 1~eta),
+                      paste(1~alpha, ", ", 2~eta),
+                      paste(1~alpha, ", ", 4~eta),
+                      paste(2~alpha, ", ", 1~eta),
+                      paste(2~alpha, ", ", 2~eta),
+                      paste(2~alpha, ", ", 4~eta),
+                      paste(4~alpha, ", ", 1~eta),
+                      paste(4~alpha, ", ", 2~eta),
+                      paste(4~alpha, ", ", 4~eta)))
+
+y_labs = rev(x_labs)
+
+aic_props <- aic_recov %>%
+  mutate(sim = factor(sim, levels = c("one_LR_sticky", "two_LR_sticky", "four_LR_sticky",
+                                      "decay_one_alpha_one_eta",  "decay_one_alpha_two_eta", "decay_one_alpha_four_eta",
+                                       "decay_two_alpha_one_eta",  "decay_two_alpha_two_eta", "decay_two_alpha_four_eta",
+                                       "decay_four_alpha_one_eta",  "decay_four_alpha_two_eta", "decay_four_alpha_four_eta")),
+         fit = factor(fit, levels = c(12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1))) %>%
+  group_by(sim, fit, .drop = F) %>%
+  summarise(n = n(), .drop = F) %>%
+  mutate(freq = n/sum(n), .drop = F)
+                                
+aic_props_plot <- ggplot(aic_props, aes(sim, fit, fill = freq)) +
+  geom_tile(color = "black") +
+  geom_text(aes(label = round(freq, 2))) +
+  scale_fill_gradient(low = "white", high = color2, "Proportion Best Fit", 
+                      guide = "none") +
+  scale_x_discrete(labels = x_labs, name = "Simulated Model") +
+  scale_y_discrete(labels = y_labs, name = "Recovered Model") +
   casino.theme
  aic_props_plot 
 ```
@@ -305,6 +394,7 @@ sub_optimal_choices <- optimal_choices %>%
   select(matlab_id, age, age_group, optimal_choice, block_order, block_type, trial, model = data_type)
 ```
 
+## Posterior predictive check: Four LR Model
 ```{r import simulated data}
 sim_fourLR <- read_csv(fourLR_choices_name) %>%
   mutate(model = "4LR") 
@@ -376,3 +466,292 @@ optimal_choice_plot <- ggplot(optimal_choice_group_means,
     axis.line = element_blank()) 
 optimal_choice_plot
 ```
+
+## Participant data: Choice distribution
+```{r sub choice distribution}
+sub_data <- optimal_choices %>%
+  group_by(sub_id, block_type, card_letter, age_group) %>%
+  summarize(num_choices = n()) %>%
+  group_by(sub_id, block_type, age_group) %>%
+  summarize(max_choices = max(num_choices)) %>%
+  mutate(exclude_max_choice = case_when(max_choices > 89 ~ 1,
+                                        max_choices < 90 ~ 0))
+
+#summarize number of excluded subs
+subs_excluded <- sub_data %>%
+  filter(exclude_max_choice == 1) %>%
+  group_by(age_group) %>%
+  summarize(N = n())
+subs_excluded
+
+sub_ids_excluded <-  sub_data %>%
+  filter(exclude_max_choice == 1) %>%
+  select(sub_id)
+
+#write_csv(sub_ids_excluded, 'data/other_data_files/sub_same_choice_exclusions.csv')
+```
+
+## Optimal choice plot: w/o max choice > 90
+```{r plot data with participant exclusions, fig.width = 6.5}
+
+#exclude participants w/ deterministic choices
+optimal_choice_exclusions <- full_join(sub_data, optimal_choice_sub_means, by = c("sub_id", "block_type", "age_group")) %>%
+  filter(exclude_max_choice == 0)
+
+#compute means per age group
+optimal_choice_means <- optimal_choice_exclusions %>%
+  group_by(trial_group, block_type, age_group, model) %>%
+  summarize(mean_opt_choice = mean(opt_choice, na.rm = T),
+            se_opt_choice = se(opt_choice)) %>%
+  mutate(model = factor(model))
+
+
+#plot optimal choices over time
+optimal_choice_plot_exc <- ggplot(optimal_choice_means, 
+                              aes(x = trial_group,
+                                  y = mean_opt_choice, 
+                                  color = block_type,
+                                  linetype = model,
+                                  shape = model)) +
+  facet_grid(cols = vars(age_group)) +
+  geom_line(size = 1) +
+  coord_cartesian(ylim = c(.3, .8)) +
+  geom_point(size = 2) +
+  geom_errorbar(data = optimal_choice_means %>% filter(model == "participants"), aes(ymin = mean_opt_choice - se_opt_choice, ymax = mean_opt_choice + se_opt_choice), width = .1, linetype = 1) +
+  scale_color_manual(values = c(color1, color2), name = "") +
+  scale_linetype_manual(values = c(1, 2), name = "") +
+  scale_shape_manual(values = c(17, 20), name = "") +
+  geom_hline(yintercept = .5, color = "grey", linetype = "dashed") +
+  xlab("Trial Group (5 trials)") +
+  scale_x_continuous(breaks = c(4, 8, 12, 16, 20)) +
+  ylab("Proportion of Optimal Choices") +
+  casino.theme +
+  theme(legend.position = "top") +
+        theme(panel.border = element_rect(fill = NA, size = .5),
+    panel.background = element_blank(),
+    axis.line = element_blank()) 
+optimal_choice_plot_exc
+```
+
+
+## Posterior predictive check: One LR Model
+```{r import simulated 1LR data}
+sim_oneLR <- read_csv(oneLR_choices_name) %>%
+  mutate(model = "1LR") 
+
+#get block information
+sub_info <- sub_optimal_choices %>%
+  ungroup() %>%
+  select(sub_id, matlab_id, age, age_group, block_order) %>%
+  unique()
+
+#combine
+sim_data <- full_join(sim_oneLR, sub_info, by = c('matlab_id')) %>%
+  mutate(trial_num = case_when(trial < 101 ~ trial,
+                               trial > 100 ~ trial - 100),
+         block_type = case_when(block_order == "Risk Bad First" & trial < 101 ~ "Risk Bad",
+                                block_order == "Risk Bad First" & trial > 100 ~ "Risk Good",
+                                block_order == "Risk Good First" & trial < 101 ~ "Risk Good",
+                                block_order == "Risk Good First" & trial > 100 ~ "Risk Bad")) %>%
+  select(sub_id, matlab_id, age, age_group, optimal_choice = mean_opt_choice, block_order, block_type, trial = trial_num, model)
+
+#combine with sub data
+combined_data <- rbind(sim_data, sub_optimal_choices)
+```
+
+
+```{r plot simulated 1LR and real data, fig.width = 6.5}
+#compute means per trial group
+optimal_choice_means <- combined_data %>%
+  mutate(trial_group = ceiling(trial/5)) %>%
+  group_by(trial_group, block_type, age_group, model) %>%
+  summarize(mean_opt_choice = mean(optimal_choice, na.rm = T),
+            se_opt_choice = se(optimal_choice)) %>%
+  mutate(model = factor(model))
+
+optimal_choice_sub_means <- combined_data %>%
+  mutate(trial_group = ceiling(trial/5)) %>%
+  group_by(sub_id, trial_group, block_type, age_group, model) %>%
+  summarize(opt_choice = mean(optimal_choice, na.rm = T)) %>%
+  mutate(model = factor(model))
+
+optimal_choice_group_means <- optimal_choice_sub_means %>%
+  group_by(trial_group, block_type, age_group, model) %>%
+  summarize(mean_opt_choice = mean(opt_choice),
+            se_opt_choice = se(opt_choice)) 
+
+#plot optimal choices over time
+optimal_choice_plot <- ggplot(optimal_choice_group_means, 
+                              aes(x = trial_group,
+                                  y = mean_opt_choice, 
+                                  color = block_type,
+                                  linetype = model,
+                                  shape = model)) +
+  facet_grid(cols = vars(age_group)) +
+  geom_line(size = 1) +
+  coord_cartesian(ylim = c(.3, .8)) +
+  geom_point(size = 2) +
+  geom_errorbar(data = optimal_choice_group_means %>% filter(model == "participants"), aes(ymin = mean_opt_choice - se_opt_choice, ymax = mean_opt_choice + se_opt_choice), width = .1, linetype = 1) +
+  scale_color_manual(values = c(color1, color2), name = "") +
+  scale_linetype_manual(values = c(1, 2), name = "") +
+  scale_shape_manual(values = c(17, 20), name = "") +
+  geom_hline(yintercept = .5, color = "grey", linetype = "dashed") +
+  xlab("Trial Group (5 trials)") +
+  scale_x_continuous(breaks = c(4, 8, 12, 16, 20)) +
+  ylab("Proportion of Optimal Choices") +
+  casino.theme +
+  theme(legend.position = "top") +
+        theme(panel.border = element_rect(fill = NA, size = .5),
+    panel.background = element_blank(),
+    axis.line = element_blank()) 
+optimal_choice_plot
+```
+
+## Posterior predictive check: Decay model (4 alpha, 2 eta)
+```{r import simulated decay data}
+sim_decay <- read_csv(decay_choices_name) %>%
+  mutate(model = "decay") 
+
+#get block information
+sub_info <- sub_optimal_choices %>%
+  ungroup() %>%
+  select(sub_id, matlab_id, age, age_group, block_order) %>%
+  unique()
+
+#combine
+sim_data <- full_join(sim_decay, sub_info, by = c('matlab_id')) %>%
+  mutate(trial_num = case_when(trial < 101 ~ trial,
+                               trial > 100 ~ trial - 100),
+         block_type = case_when(block_order == "Risk Bad First" & trial < 101 ~ "Risk Bad",
+                                block_order == "Risk Bad First" & trial > 100 ~ "Risk Good",
+                                block_order == "Risk Good First" & trial < 101 ~ "Risk Good",
+                                block_order == "Risk Good First" & trial > 100 ~ "Risk Bad")) %>%
+  select(sub_id, matlab_id, age, age_group, optimal_choice = mean_opt_choice, block_order, block_type, trial = trial_num, model)
+
+#combine with sub data
+combined_data <- rbind(sim_data, sub_optimal_choices)
+```
+
+
+```{r plot simulated decay and real data, fig.width = 6.5}
+#compute means per trial group
+optimal_choice_means <- combined_data %>%
+  mutate(trial_group = ceiling(trial/5)) %>%
+  group_by(trial_group, block_type, age_group, model) %>%
+  summarize(mean_opt_choice = mean(optimal_choice, na.rm = T),
+            se_opt_choice = se(optimal_choice)) %>%
+  mutate(model = factor(model))
+
+optimal_choice_sub_means <- combined_data %>%
+  mutate(trial_group = ceiling(trial/5)) %>%
+  group_by(sub_id, trial_group, block_type, age_group, model) %>%
+  summarize(opt_choice = mean(optimal_choice, na.rm = T)) %>%
+  mutate(model = factor(model))
+
+optimal_choice_group_means <- optimal_choice_sub_means %>%
+  group_by(trial_group, block_type, age_group, model) %>%
+  summarize(mean_opt_choice = mean(opt_choice),
+            se_opt_choice = se(opt_choice)) 
+
+#plot optimal choices over time
+optimal_choice_plot <- ggplot(optimal_choice_group_means, 
+                              aes(x = trial_group,
+                                  y = mean_opt_choice, 
+                                  color = block_type,
+                                  linetype = model,
+                                  shape = model)) +
+  facet_grid(cols = vars(age_group)) +
+  geom_line(size = 1) +
+  coord_cartesian(ylim = c(.3, .8)) +
+  geom_point(size = 2) +
+  geom_errorbar(data = optimal_choice_group_means %>% filter(model == "participants"), aes(ymin = mean_opt_choice - se_opt_choice, ymax = mean_opt_choice + se_opt_choice), width = .1, linetype = 1) +
+  scale_color_manual(values = c(color1, color2), name = "") +
+  scale_linetype_manual(values = c(1, 2), name = "") +
+  scale_shape_manual(values = c(17, 20), name = "") +
+  geom_hline(yintercept = .5, color = "grey", linetype = "dashed") +
+  xlab("Trial Group (5 trials)") +
+  scale_x_continuous(breaks = c(4, 8, 12, 16, 20)) +
+  ylab("Proportion of Optimal Choices") +
+  casino.theme +
+  theme(legend.position = "top") +
+        theme(panel.border = element_rect(fill = NA, size = .5),
+    panel.background = element_blank(),
+    axis.line = element_blank()) 
+optimal_choice_plot
+```
+
+
+
+## Posterior predictive check: Decay model (4 alpha, 4 eta)
+```{r import simulated decay2 data}
+sim_decay <- read_csv(decay2_choices_name) %>%
+  mutate(model = "decay") 
+
+#get block information
+sub_info <- sub_optimal_choices %>%
+  ungroup() %>%
+  select(sub_id, matlab_id, age, age_group, block_order) %>%
+  unique()
+
+#combine
+sim_data <- full_join(sim_decay, sub_info, by = c('matlab_id')) %>%
+  mutate(trial_num = case_when(trial < 101 ~ trial,
+                               trial > 100 ~ trial - 100),
+         block_type = case_when(block_order == "Risk Bad First" & trial < 101 ~ "Risk Bad",
+                                block_order == "Risk Bad First" & trial > 100 ~ "Risk Good",
+                                block_order == "Risk Good First" & trial < 101 ~ "Risk Good",
+                                block_order == "Risk Good First" & trial > 100 ~ "Risk Bad")) %>%
+  select(sub_id, matlab_id, age, age_group, optimal_choice = mean_opt_choice, block_order, block_type, trial = trial_num, model)
+
+#combine with sub data
+combined_data <- rbind(sim_data, sub_optimal_choices)
+```
+
+
+```{r plot simulated decay2 and real data, fig.width = 6.5}
+#compute means per trial group
+optimal_choice_means <- combined_data %>%
+  mutate(trial_group = ceiling(trial/5)) %>%
+  group_by(trial_group, block_type, age_group, model) %>%
+  summarize(mean_opt_choice = mean(optimal_choice, na.rm = T),
+            se_opt_choice = se(optimal_choice)) %>%
+  mutate(model = factor(model))
+
+optimal_choice_sub_means <- combined_data %>%
+  mutate(trial_group = ceiling(trial/5)) %>%
+  group_by(sub_id, trial_group, block_type, age_group, model) %>%
+  summarize(opt_choice = mean(optimal_choice, na.rm = T)) %>%
+  mutate(model = factor(model))
+
+optimal_choice_group_means <- optimal_choice_sub_means %>%
+  group_by(trial_group, block_type, age_group, model) %>%
+  summarize(mean_opt_choice = mean(opt_choice),
+            se_opt_choice = se(opt_choice)) 
+
+#plot optimal choices over time
+optimal_choice_plot <- ggplot(optimal_choice_group_means, 
+                              aes(x = trial_group,
+                                  y = mean_opt_choice, 
+                                  color = block_type,
+                                  linetype = model,
+                                  shape = model)) +
+  facet_grid(cols = vars(age_group)) +
+  geom_line(size = 1) +
+  coord_cartesian(ylim = c(.3, .8)) +
+  geom_point(size = 2) +
+  geom_errorbar(data = optimal_choice_group_means %>% filter(model == "participants"), aes(ymin = mean_opt_choice - se_opt_choice, ymax = mean_opt_choice + se_opt_choice), width = .1, linetype = 1) +
+  scale_color_manual(values = c(color1, color2), name = "") +
+  scale_linetype_manual(values = c(1, 2), name = "") +
+  scale_shape_manual(values = c(17, 20), name = "") +
+  geom_hline(yintercept = .5, color = "grey", linetype = "dashed") +
+  xlab("Trial Group (5 trials)") +
+  scale_x_continuous(breaks = c(4, 8, 12, 16, 20)) +
+  ylab("Proportion of Optimal Choices") +
+  casino.theme +
+  theme(legend.position = "top") +
+        theme(panel.border = element_rect(fill = NA, size = .5),
+    panel.background = element_blank(),
+    axis.line = element_blank()) 
+optimal_choice_plot
+```
+
