@@ -16,14 +16,15 @@ n_subjects = length(sub_list);
 
 %% VARIABLES TO MODIFY %%
 % save filename
-filename = 'output/model_fits/choice_data_fits_all';
+filename = 'output/model_fits/choice_data_fits_test';
 
 % How many iterations to run per participant
 niter = 10;
 
 % models to fit
-models = {'1L', '2L', '4L', '1LS', '2LS', '4LS', 'decay1a1e', 'decay1a2e', 'decay1a4e', ...
-    'decay2a1e', 'decay2a2e', 'decay2a4e', 'decay4a1e', 'decay4a2e', 'decay4a4e'};
+models = {'1L'};
+%models = {'1L', '2L', '4L', '1LS', '2LS', '4LS', 'decay1a1e', 'decay1a2e', 'decay1a4e', ...
+%    'decay2a1e', 'decay2a2e', 'decay2a4e', 'decay4a1e', 'decay4a2e', 'decay4a4e'};
 
 %preallocate structure
 model_fits(length(models)) = struct();

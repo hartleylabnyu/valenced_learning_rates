@@ -330,6 +330,113 @@ aic_age_group_plot_sticky
 ```
 
 
+
+
+```{r read in all bics}
+bic_name <- "RL_modeling/output/model_fits_real_data/bics_all.csv"
+bics <- read_csv(bic_name)
+
+#add age groups
+matlab_ids <- filtered_data %>%
+  select(matlab_id, sub_id, age, age_group, gender, risk_good_first) %>%
+  unique()
+  
+bics <- full_join(matlab_ids, bics, by = c("matlab_id")) %>%
+  drop_na() %>%
+  select(-c(matlab_id, gender))
+
+#pivot longer
+bic_long <- bics %>%
+  pivot_longer(names_to = "model",
+               values_to = "bic",
+               -c(sub_id, age, age_group, risk_good_first))
+
+#static LR models
+bic_static <- bic_long %>%
+  filter(!startsWith(model, "decay")) %>%
+  mutate(model_type = case_when(endsWith(model, "L") ~ "Non-sticky",
+                                endsWith(model, "S") ~ "Sticky")) 
+
+#models with stickiness
+bic_sticky <- bic_long %>%
+  filter(!endsWith(model, "L")) %>%
+  mutate(model_type = case_when(startsWith(model, "decay") ~ "Decaying Learning Rate",
+                                endsWith(model, "S") ~ "Static Learning Rate")) 
+
+bic_sticky$model_type = factor(bic_sticky$model_type, levels = c("Static Learning Rate", "Decaying Learning Rate"))
+```
+
+
+```{r compute mean bics for each model type}
+#static models
+mean_bic_static <- bic_static %>%
+  group_by(model, model_type) %>%
+  summarize(mean_bic = mean(bic),
+            se_bic = se(bic),
+            N = n())
+
+mean_age_group_bic_static <- bic_static %>%
+  group_by(age_group, model, model_type) %>%
+  summarize(mean_bic = mean(bic))
+
+#models with stickiness
+mean_bic_sticky <- bic_sticky %>%
+  group_by(model, model_type) %>%
+  summarize(mean_bic = mean(bic),
+            se_bic = se(bic))
+
+mean_age_group_bic_sticky <- bic_sticky %>%
+  group_by(age_group, model, model_type) %>%
+  summarize(mean_bic = mean(bic))
+```
+
+## Mean aic values: Static and decay models
+```{r mean bic plot static and decay, fig.height = 4, fig.width = 8}
+x_labs = c(expression("1LR", "2LR", "4LR",
+                      paste(1~alpha, ", ", 1~eta),
+                      paste(1~alpha, ", ", 2~eta),
+                      paste(1~alpha, ", ", 4~eta),
+                      paste(2~alpha, ", ", 1~eta),
+                      paste(2~alpha, ", ", 2~eta),
+                      paste(2~alpha, ", ", 4~eta),
+                      paste(4~alpha, ", ", 1~eta),
+                      paste(4~alpha, ", ", 2~eta),
+                      paste(4~alpha, ", ", 4~eta)))
+
+bic_overall_plot_sticky <- ggplot(mean_bic_sticky, aes(x = model, y = mean_bic, fill = model_type, size = model)) +
+  geom_bar(stat = "identity", position = "dodge", color = "black") +
+  scale_size_manual(values = c(.2, .2, 1, .2, .2, .2, .2, .2, .2, .2, 1, .2),
+                    guide = "none") +
+  geom_text(aes(label=round(mean_bic, 1)), vjust= -.6, color="black", size=4)+
+  scale_fill_manual(values = c(color1, color2), name = "Model Type") + 
+  scale_x_discrete(labels = x_labs,
+                   name = "Model") +
+  coord_cartesian(ylim = c(440, 490)) +
+  ylab("Mean BIC") +
+  casino.theme +
+  theme(axis.text.x = element_text(angle = 65, vjust = 0.5),
+        legend.position = "top")
+bic_overall_plot_sticky
+```
+
+## Mean bic values across age groups: Static and decay models
+```{r bic age group plot static and decay, fig.height = 5, fig.width = 12}
+bic_age_group_plot_sticky <- ggplot(mean_age_group_bic_sticky, aes(x = model, fill = model_type, y = mean_bic)) +
+  facet_wrap(~age_group) +
+  geom_bar(stat = "identity", position = "dodge", color = "black") +
+  geom_text(aes(label=round(mean_bic, 1)), vjust= -.6, color="black", size=3)+
+  scale_fill_manual(values = c(color1, color2), name = "Model Type") + 
+  scale_x_discrete(labels = x_labs,
+                   name = "Model") +
+  ylab("Mean BIC") +
+  coord_cartesian(ylim = c(425, 510)) +
+  casino.theme +
+  theme(axis.text.x = element_text(angle = 65, vjust = 0.5),
+        legend.position = "top")
+bic_age_group_plot_sticky
+```
+
+
 # Parameter estimates from four learning rate model
 ```{r read in RL results}
 #read in parameter estimates

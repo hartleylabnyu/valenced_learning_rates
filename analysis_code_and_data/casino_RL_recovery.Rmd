@@ -55,6 +55,7 @@ sim_reward_earned_name <- glue("{modeling_dir}/2LR_sim_results.csv")
 #aic values for each dataset & model
 aic_recov_name <- glue("{modeling_dir}/model_recoverability/aic_recovery_static_sticky.csv") 
 aic_recov_all_name <- glue("{modeling_dir}/model_recoverability/aic_recovery_all_sticky.csv")
+bic_recov_all_name <- glue("{modeling_dir}/model_recoverability/bic_recovery_all_sticky.csv")
 
 #simulated and recovered parameter values from four LR model
 sim_params_name <- glue("{modeling_dir}/param_recoverability/fourLR_sticky_sim_params.csv")
@@ -251,7 +252,7 @@ aic_props_plot <- ggplot(aic_props, aes(sim, fit, fill = freq)) +
 aic_recov <- read_csv(aic_recov_all_name, skip = 1, col_names = c('sim', 'fit'))
 ```
 
-```{r all recovery plot, fig.height = 8, fig.width = 10}
+```{r all aic recovery plot, fig.height = 8, fig.width = 10}
 
 x_labs = c(expression("1LR", "2LR", "4LR",
                       paste(1~alpha, ", ", 1~eta),
@@ -285,6 +286,46 @@ aic_props_plot <- ggplot(aic_props, aes(sim, fit, fill = freq)) +
   scale_y_discrete(labels = y_labs, name = "Recovered Model") +
   casino.theme
  aic_props_plot 
+```
+
+```{r read in all model recovery results bic}
+bic_recov <- read_csv(bic_recov_all_name, skip = 1, col_names = c('sim', 'fit'))
+```
+
+```{r all bic recovery plot, fig.height = 8, fig.width = 10}
+
+x_labs = c(expression("1LR", "2LR", "4LR",
+                      paste(1~alpha, ", ", 1~eta),
+                      paste(1~alpha, ", ", 2~eta),
+                      paste(1~alpha, ", ", 4~eta),
+                      paste(2~alpha, ", ", 1~eta),
+                      paste(2~alpha, ", ", 2~eta),
+                      paste(2~alpha, ", ", 4~eta),
+                      paste(4~alpha, ", ", 1~eta),
+                      paste(4~alpha, ", ", 2~eta),
+                      paste(4~alpha, ", ", 4~eta)))
+
+y_labs = rev(x_labs)
+
+bic_props <- bic_recov %>%
+  mutate(sim = factor(sim, levels = c("one_LR_sticky", "two_LR_sticky", "four_LR_sticky",
+                                      "decay_one_alpha_one_eta",  "decay_one_alpha_two_eta", "decay_one_alpha_four_eta",
+                                       "decay_two_alpha_one_eta",  "decay_two_alpha_two_eta", "decay_two_alpha_four_eta",
+                                       "decay_four_alpha_one_eta",  "decay_four_alpha_two_eta", "decay_four_alpha_four_eta")),
+         fit = factor(fit, levels = c(12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1))) %>%
+  group_by(sim, fit, .drop = F) %>%
+  summarise(n = n(), .drop = F) %>%
+  mutate(freq = n/sum(n), .drop = F)
+                                
+bic_props_plot <- ggplot(bic_props, aes(sim, fit, fill = freq)) +
+  geom_tile(color = "black") +
+  geom_text(aes(label = round(freq, 2))) +
+  scale_fill_gradient(low = "white", high = color2, "Proportion Best Fit", 
+                      guide = "none") +
+  scale_x_discrete(labels = x_labs, name = "Simulated Model") +
+  scale_y_discrete(labels = y_labs, name = "Recovered Model") +
+  casino.theme
+ bic_props_plot 
 ```
 
 # Simulated vs. real data
