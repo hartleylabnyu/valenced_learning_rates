@@ -1,5 +1,5 @@
 # Flexibility in valenced reinforcement learning computations across development
-Tasks, data, and analysis code for: Nussenbaum, K., Velez, J.A., Washington, B.T., Hamling, H.E., & Hartley, C.A. (in press). Flexibility in valenced reinforcement learning computations across development. *Child Development.*
+Tasks, data, and analysis code for: Nussenbaum, K., Velez, J.A., Washington, B.T., Hamling, H.E., & Hartley, C.A. (in press). Flexibility in valenced reinforcement learning computations across development. *Child Development.* [preprint](https://psyarxiv.com/5f9uc/)
 
 We collected data from 154 participants on two tasks: a novel reinforcement learning task
 and the Matrix Reasoning Item Bank (MaRs-IB) as described in Chierchia, Fuhrmann et al. (2019). 
